@@ -6,11 +6,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.db import get_db
-from app.dependencies import get_current_user_from_api_key, get_api_key_id
+from app.dependencies import get_current_user_from_api_key, get_current_api_key
 from app.core.router import get_route, get_all_alias_models
 from app.core.billing import calculate_cost, deduct_balance
 from app.core.proxy import proxy_request, proxy_stream
-from app.models import User, UsageLog
+from app.models import User, UsageLog, ApiKey
 
 router = APIRouter()
 
@@ -29,12 +29,15 @@ async def chat_completions(
     request: Request,
     session: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user_from_api_key),
-    api_key_id: int = Depends(get_api_key_id),
+    api_key: ApiKey = Depends(get_current_api_key),
 ):
     body = await request.json()
     alias_model = body.get("model", "")
     if not alias_model:
         raise HTTPException(status_code=400, detail="model field is required")
+
+    if api_key.model and api_key.model != alias_model:
+        raise HTTPException(status_code=403, detail=f"This API key only allows model '{api_key.model}', not '{alias_model}'")
 
     route = await get_route(session, alias_model)
     if not route:
@@ -70,7 +73,7 @@ async def chat_completions(
             cost = await calculate_cost(session, alias_model, last_usage["tokens_in"], last_usage["tokens_out"])
             await deduct_balance(session, user, cost, f"stream: {alias_model}")
             log = UsageLog(
-                user_id=user.id, api_key_id=api_key_id,
+                user_id=user.id, api_key_id=api_key.id,
                 alias_model=alias_model, upstream_model=route.upstream_model,
                 tokens_in=last_usage["tokens_in"], tokens_out=last_usage["tokens_out"],
                 cost=cost, duration_ms=last_usage["duration_ms"], status="success",
@@ -87,7 +90,7 @@ async def chat_completions(
 
     if result["status"] == "error":
         log = UsageLog(
-            user_id=user.id, api_key_id=api_key_id,
+            user_id=user.id, api_key_id=api_key.id,
             alias_model=alias_model, upstream_model=route.upstream_model,
             tokens_in=0, tokens_out=0, cost=0, duration_ms=result["duration_ms"],
             status="error", error_msg=result.get("error_msg", ""),
@@ -102,7 +105,7 @@ async def chat_completions(
     except ValueError:
         raise HTTPException(status_code=402, detail="Insufficient balance")
     log = UsageLog(
-        user_id=user.id, api_key_id=api_key_id,
+        user_id=user.id, api_key_id=api_key.id,
         alias_model=alias_model, upstream_model=route.upstream_model,
         tokens_in=result["tokens_in"], tokens_out=result["tokens_out"],
         cost=cost, duration_ms=result["duration_ms"], status="success",
@@ -117,10 +120,16 @@ async def messages_endpoint(
     request: Request,
     session: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user_from_api_key),
-    api_key_id: int = Depends(get_api_key_id),
+    api_key: ApiKey = Depends(get_current_api_key),
 ):
     body = await request.json()
     alias_model = body.get("model", "")
+    if not alias_model:
+        raise HTTPException(status_code=400, detail="model field is required")
+
+    if api_key.model and api_key.model != alias_model:
+        raise HTTPException(status_code=403, detail=f"This API key only allows model '{api_key.model}', not '{alias_model}'")
+
     route = await get_route(session, alias_model)
     if not route:
         raise HTTPException(status_code=404, detail=f"Model '{alias_model}' not found")
@@ -139,7 +148,7 @@ async def messages_endpoint(
     )
 
     if result["status"] == "error":
-        log = UsageLog(user_id=user.id, api_key_id=api_key_id, alias_model=alias_model,
+        log = UsageLog(user_id=user.id, api_key_id=api_key.id, alias_model=alias_model,
                        upstream_model=route.upstream_model, tokens_in=0, tokens_out=0, cost=0,
                        duration_ms=result["duration_ms"], status="error", error_msg=result.get("error_msg", ""))
         session.add(log)
@@ -151,7 +160,7 @@ async def messages_endpoint(
         await deduct_balance(session, user, cost, f"message: {alias_model}")
     except ValueError:
         raise HTTPException(status_code=402, detail="Insufficient balance")
-    log = UsageLog(user_id=user.id, api_key_id=api_key_id, alias_model=alias_model,
+    log = UsageLog(user_id=user.id, api_key_id=api_key.id, alias_model=alias_model,
                    upstream_model=route.upstream_model, tokens_in=result["tokens_in"],
                    tokens_out=result["tokens_out"], cost=cost, duration_ms=result["duration_ms"], status="success")
     session.add(log)

@@ -19,6 +19,14 @@
   table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 12px; }
   th { text-align: left; color: #6c7086; padding: 10px; border-bottom: 1px solid #313244; }
   td { padding: 10px; border-bottom: 1px solid #1e1e2e; }
+  .code-block { background: #1e1e2e; border-radius: 8px; padding: 16px; font-family: 'Consolas', 'Monaco', monospace; font-size: 13px; line-height: 1.6; overflow-x: auto; margin: 8px 0; }
+  .code-block .c { color: #6c7086; }
+  .code-block .k { color: #cba6f7; }
+  .code-block .v { color: #a6e3a1; }
+  .section { margin-top: 28px; }
+  .section h3 { margin-bottom: 12px; color: #89b4fa; }
+  .tip { background: #1e2a2e; border: 1px solid #a6e3a1; border-radius: 8px; padding: 12px 16px; font-size: 13px; margin-top: 12px; color: #a6e3a1; }
+  .tip a { color: #89b4fa; }
 </style>
 </head>
 <body>
@@ -32,32 +40,60 @@
 <div class="container">
   <div class="cards">
     <div class="stat"><div class="label">账户余额</div><div class="value" id="balance">--</div><div class="hint">余额不足请联系管理员充值</div></div>
-    <div class="stat"><div class="label">今日调用</div><div class="value" id="todayCalls">--</div><div class="hint" id="todayCost"></div></div>
+    <div class="stat"><div class="label">近7天调用</div><div class="value" id="totalCalls">--</div><div class="hint" id="totalCost"></div></div>
   </div>
-  <h3 style="margin-top:24px;">近7天用量</h3>
-  <div id="usageChart" style="background:#1e1e2e;border-radius:10px;padding:20px;height:150px;display:flex;align-items:flex-end;gap:8px;"></div>
+
+  <div class="section">
+    <h3>可用模型 & 定价</h3>
+    <table><thead><tr><th>模型</th><th>输入价格</th><th>输出价格</th><th>调用格式</th></tr></thead><tbody id="pricingTbody"></tbody></table>
+  </div>
+
+  <div class="section">
+    <h3>使用说明</h3>
+    <p style="color:#6c7086;font-size:13px;margin-bottom:12px;">先在 <a href="/static/keys.html" style="color:#89b4fa;">API Keys</a> 创建 Key 并绑定模型，然后在代码中这样调用：</p>
+
+    <p style="font-size:13px;margin-top:16px;color:#cba6f7;">OpenAI 格式 (gpt-4o / gpt-4-turbo / gpt-5.5)</p>
+    <div class="code-block">
+      <span class="c"># 替换 YOUR_API_KEY 和模型名</span><br>
+      <span class="k">curl</span> http://localhost:8000/v1/chat/completions \<br>
+      &nbsp;&nbsp;-H <span class="v">"Authorization: Bearer YOUR_API_KEY"</span> \<br>
+      &nbsp;&nbsp;-H <span class="v">"Content-Type: application/json"</span> \<br>
+      &nbsp;&nbsp;-d <span class="v">'{"model": "gpt-4o", "messages": [{"role": "user", "content": "你好"}]}'</span>
+    </div>
+
+    <p style="font-size:13px;margin-top:16px;color:#cba6f7;">Anthropic 格式 (claude-sonnet-4-6 / claude-opus-4-7)</p>
+    <div class="code-block">
+      <span class="c"># 替换 YOUR_API_KEY 和模型名</span><br>
+      <span class="k">curl</span> http://localhost:8000/v1/messages \<br>
+      &nbsp;&nbsp;-H <span class="v">"Authorization: Bearer YOUR_API_KEY"</span> \<br>
+      &nbsp;&nbsp;-H <span class="v">"Content-Type: application/json"</span> \<br>
+      &nbsp;&nbsp;-d <span class="v">'{"model": "claude-sonnet-4-6", "messages": [{"role": "user", "content": [{"type": "text", "text": "你好"}]}], "max_tokens": 1024}'</span>
+    </div>
+
+    <p style="font-size:13px;margin-top:16px;color:#cba6f7;">流式输出</p>
+    <div class="code-block">
+      <span class="c"># 在请求体中加 "stream": true</span><br>
+      &nbsp;&nbsp;-d <span class="v">'{"model": "gpt-5.5", "messages": [{"role": "user", "content": "写一首诗"}], "stream": true}'</span>
+    </div>
+
+    <div class="tip">每个 API Key 绑定一个模型，请求的 model 必须与 Key 绑定的模型一致。不同模型需要创建不同的 Key。您的 API 端点: <strong>http://localhost:8000</strong></div>
+  </div>
 </div>
 <script>
 async function load() {
   const me = await fetch('/api/me').then(r => { if (!r.ok) window.location.href='/static/login.html'; return r.json(); });
   document.getElementById('balance').textContent = '¥' + me.balance.toFixed(2);
+
   const usage = await fetch('/api/usage?days=7').then(r => r.json());
-  document.getElementById('todayCalls').textContent = usage.total_calls;
-  document.getElementById('todayCost').textContent = '消费 ¥' + usage.total_cost.toFixed(2);
-  const chart = document.getElementById('usageChart');
-  chart.innerHTML = '';
-  const byDay = usage.by_day || [];
-  const maxCalls = Math.max(...byDay.map(d => d.calls), 1);
-  byDay.forEach(d => {
-    const bar = document.createElement('div');
-    bar.style.cssText = `flex:1;background:#89b4fa;height:${(d.calls/maxCalls*100).toFixed(0)}%;border-radius:4px 4px 0 0;min-height:4px;`;
-    bar.title = d.date + ': ' + d.calls + ' calls';
-    chart.appendChild(bar);
-  });
-  const labels = document.createElement('div');
-  labels.style.cssText = 'display:flex;gap:8px;margin-top:8px;font-size:11px;color:#6c7086;';
-  byDay.forEach(d => { const sp = document.createElement('span'); sp.style.flex='1'; sp.style.textAlign='center'; sp.textContent = d.date.slice(5); labels.appendChild(sp); });
-  chart.parentElement.appendChild(labels);
+  document.getElementById('totalCalls').textContent = usage.total_calls;
+  document.getElementById('totalCost').textContent = '共消费 ¥' + usage.total_cost.toFixed(2);
+
+  const pricing = await fetch('/api/pricing').then(r => r.json());
+  const tbody = document.getElementById('pricingTbody');
+  tbody.innerHTML = pricing.map(p => {
+    const fmt = p.model.startsWith('claude') ? 'Anthropic' : 'OpenAI';
+    return `<tr><td style="font-weight:600;">${p.model}</td><td>$${p.input_price_per_1k}/1k</td><td>$${p.output_price_per_1k}/1k</td><td style="color:#6c7086;">${fmt}</td></tr>`;
+  }).join('');
 }
 async function logout() { await fetch('/api/auth/logout', {method:'POST'}); window.location.href='/static/login.html'; }
 load();

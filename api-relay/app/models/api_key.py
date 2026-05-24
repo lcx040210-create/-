@@ -14,5 +14,6 @@ class ApiKey(Base):
     key_hash: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     key_prefix: Mapped[str] = mapped_column(String(12), nullable=False)
     name: Mapped[str] = mapped_column(String(100), default="default")
+    model: Mapped[str] = mapped_column(String(50), nullable=False, default="")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

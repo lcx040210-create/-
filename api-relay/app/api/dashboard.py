@@ -13,7 +13,7 @@ from app.core.auth import (
     generate_api_key,
     hash_api_key,
 )
-from app.models import User, ApiKey, UsageLog, Pricing
+from app.models import User, ApiKey, UsageLog, Pricing, ModelRoute
 
 router = APIRouter(prefix="/api")
 SESSIONS: dict[str, int] = {}  # 简易 session token → user_id
@@ -118,7 +118,7 @@ async def list_keys(
     )
     keys = result.scalars().all()
     return [
-        {"id": k.id, "name": k.name, "key_prefix": k.key_prefix, "created_at": str(k.created_at)}
+        {"id": k.id, "name": k.name, "model": k.model, "key_prefix": k.key_prefix, "created_at": str(k.created_at)}
         for k in keys
     ]
 
@@ -131,6 +131,12 @@ async def create_key(
 ):
     body = await request.json()
     name = body.get("name", "default")
+    model = body.get("model", "")
+
+    if model:
+        route_result = await session.execute(select(ModelRoute).where(ModelRoute.alias_model == model, ModelRoute.is_active == True))  # noqa: E712
+        if not route_result.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail=f"Model '{model}' not available")
 
     full_key = generate_api_key()
     key_hash = hash_api_key(full_key)
@@ -140,11 +146,12 @@ async def create_key(
         key_hash=key_hash,
         key_prefix=full_key[:12],
         name=name,
+        model=model,
     )
     session.add(api_key)
     await session.commit()
 
-    return {"id": api_key.id, "name": name, "key": full_key, "key_prefix": full_key[:12]}
+    return {"id": api_key.id, "name": name, "model": model, "key": full_key, "key_prefix": full_key[:12]}
 
 
 @router.delete("/keys/{key_id}")

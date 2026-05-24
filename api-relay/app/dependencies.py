@@ -1,4 +1,4 @@
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,6 +26,21 @@ async def get_current_user_from_api_key(request: Request, session: AsyncSession 
     if not user:
         raise HTTPException(status_code=401, detail="User not found or inactive")
     return user
+
+
+async def get_current_api_key(request: Request, session: AsyncSession = Depends(get_db)) -> ApiKey:
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
+    token = auth_header[len("Bearer "):]
+    key_hash = hash_api_key(token)
+    result = await session.execute(
+        select(ApiKey).where(ApiKey.key_hash == key_hash, ApiKey.is_active == True)  # noqa: E712
+    )
+    api_key = result.scalar_one_or_none()
+    if not api_key:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    return api_key
 
 
 async def get_api_key_id(request: Request, session: AsyncSession = Depends(get_db)) -> int:
