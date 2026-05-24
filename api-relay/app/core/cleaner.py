@@ -1,5 +1,6 @@
 import json
 import re
+import uuid
 
 ALLOWED_HEADERS = {"content-type", "date", "x-request-id", "cache-control"}
 
@@ -20,6 +21,10 @@ class ProxyCleaner:
     def clean_response(self, body: dict, alias_model: str) -> dict:
         body = body.copy()
         body["model"] = alias_model
+        # Replace upstream id with generic id to prevent provider fingerprinting
+        body["id"] = f"chatcmpl-{uuid.uuid4().hex[:24]}"
+        # Strip system_fingerprint if present
+        body.pop("system_fingerprint", None)
         return body
 
     def clean_headers(self, headers: dict) -> dict:
@@ -52,6 +57,8 @@ class ProxyCleaner:
             if "model" not in data:
                 return chunk
             data["model"] = alias_model
+            if "id" in data:
+                data["id"] = f"chatcmpl-{uuid.uuid4().hex[:24]}"
             return prefix + json.dumps(data, separators=(",", ":")) + "\n\n"
         except json.JSONDecodeError:
             return chunk

@@ -8,7 +8,7 @@ from app.config import settings
 from app.db import get_db
 from app.dependencies import get_current_user_from_api_key, get_api_key_id
 from app.core.router import get_route, get_all_alias_models
-from app.core.billing import check_balance, calculate_cost, deduct_balance
+from app.core.billing import calculate_cost, deduct_balance
 from app.core.proxy import proxy_request, proxy_stream
 from app.models import User, UsageLog
 
@@ -97,10 +97,10 @@ async def chat_completions(
         raise HTTPException(status_code=502, detail=result["body"])
 
     cost = await calculate_cost(session, alias_model, result["tokens_in"], result["tokens_out"])
-    if user.balance < cost:
+    try:
+        await deduct_balance(session, user, cost, f"chat: {alias_model}")
+    except ValueError:
         raise HTTPException(status_code=402, detail="Insufficient balance")
-
-    await deduct_balance(session, user, cost, f"chat: {alias_model}")
     log = UsageLog(
         user_id=user.id, api_key_id=api_key_id,
         alias_model=alias_model, upstream_model=route.upstream_model,
@@ -147,10 +147,10 @@ async def messages_endpoint(
         raise HTTPException(status_code=502, detail=result["body"])
 
     cost = await calculate_cost(session, alias_model, result["tokens_in"], result["tokens_out"])
-    if user.balance < cost:
+    try:
+        await deduct_balance(session, user, cost, f"message: {alias_model}")
+    except ValueError:
         raise HTTPException(status_code=402, detail="Insufficient balance")
-
-    await deduct_balance(session, user, cost, f"message: {alias_model}")
     log = UsageLog(user_id=user.id, api_key_id=api_key_id, alias_model=alias_model,
                    upstream_model=route.upstream_model, tokens_in=result["tokens_in"],
                    tokens_out=result["tokens_out"], cost=cost, duration_ms=result["duration_ms"], status="success")

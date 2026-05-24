@@ -26,8 +26,19 @@ async def deduct_balance(
 ) -> float:
     if amount <= 0:
         return user.balance
-    user.balance -= amount
-    new_balance = user.balance
+
+    # Lock user row for atomic balance check + deduction
+    result = await session.execute(
+        select(User).where(User.id == user.id).with_for_update()
+    )
+    locked_user = result.scalar_one()
+
+    if locked_user.balance < amount:
+        raise ValueError("Insufficient balance")
+
+    locked_user.balance -= amount
+    new_balance = locked_user.balance
+
     txn = Transaction(
         user_id=user.id,
         amount=-amount,
