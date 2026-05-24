@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
+from app.api.dashboard import router as dashboard_router
 from app.api.proxy import router as proxy_router
 from app.db import init_db
 
@@ -19,6 +20,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="AI Relay", lifespan=lifespan)
 app.include_router(proxy_router)
+app.include_router(dashboard_router)
 
 
 @app.get("/health")
