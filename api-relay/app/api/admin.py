@@ -7,7 +7,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.db import get_db
-from app.core.auth import verify_password
 from app.models import User, ModelRoute, Pricing, UsageLog, Transaction
 
 router = APIRouter(prefix="/admin")
