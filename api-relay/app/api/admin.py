@@ -35,6 +35,14 @@ async def admin_login(request: Request):
     return resp
 
 
+@router.post("/logout")
+async def admin_logout(request: Request):
+    token = request.cookies.get("admin_session")
+    if token:
+        ADMIN_SESSIONS.pop(token, None)
+    return {"ok": True}
+
+
 @router.get("/users")
 async def list_users(
     _: bool = Depends(get_admin),
