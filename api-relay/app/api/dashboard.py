@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
@@ -173,7 +173,7 @@ async def get_usage(
     session: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    since = datetime.utcnow() - timedelta(days=days)
+    since = datetime.now(timezone.utc) - timedelta(days=days)
     result = await session.execute(
         select(UsageLog).where(UsageLog.user_id == user.id, UsageLog.created_at >= since)
     )
