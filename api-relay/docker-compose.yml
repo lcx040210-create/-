@@ -15,4 +15,8 @@ services:
       - DEEPSEEK_BASE_URL=${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
       - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@example.com}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-changeme}
+      - QWEN_API_KEY=${QWEN_API_KEY}
+      - QWEN_BASE_URL=${QWEN_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode}
+      - REQUEST_TIMEOUT=${REQUEST_TIMEOUT:-120}
+      - MAX_CONCURRENT_PER_USER=${MAX_CONCURRENT_PER_USER:-10}
     restart: unless-stopped
