@@ -20,7 +20,7 @@ async def seed_db(session: AsyncSession):
     # 模型路由
     routes = [
         ("gpt-4o",         "deepseek", "deepseek-chat",    "openai"),
-        ("gpt-4-turbo",    "qwen",     "qwen-turbo",       "openai"),
+        ("gpt-4-turbo",    "deepseek", "deepseek-chat",    "openai"),
         ("gpt-5.5",        "deepseek", "deepseek-v4-pro",  "openai"),
         ("claude-sonnet-4-6", "deepseek", "deepseek-chat", "anthropic"),
         ("claude-opus-4-7",   "deepseek", "deepseek-v4-pro", "anthropic"),

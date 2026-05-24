@@ -6,8 +6,6 @@ class Settings(BaseSettings):
     secret_key: str = "change-me"
     deepseek_api_key: str = ""
     deepseek_base_url: str = "https://api.deepseek.com"
-    qwen_api_key: str = ""
-    qwen_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode"
     admin_email: str = "admin@example.com"
     admin_password: str = "changeme"
     request_timeout: int = 120

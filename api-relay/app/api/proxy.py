@@ -160,10 +160,10 @@ async def messages_endpoint(
 
 
 def _get_upstream_key(provider: str) -> str:
-    keys = {"deepseek": settings.deepseek_api_key, "qwen": settings.qwen_api_key}
+    keys = {"deepseek": settings.deepseek_api_key}
     return keys.get(provider, "")
 
 
 def _get_upstream_base(provider: str) -> str:
-    bases = {"deepseek": settings.deepseek_base_url, "qwen": settings.qwen_base_url}
+    bases = {"deepseek": settings.deepseek_base_url}
     return bases.get(provider, "")
