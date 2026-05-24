@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Relay - API Keys</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #11111b; color: #cdd6f4; min-height: 100vh; }
+  nav { background: #1e1e2e; padding: 0 24px; height: 56px; display: flex; align-items: center; gap: 24px; border-bottom: 1px solid #313244; }
+  nav a { color: #6c7086; text-decoration: none; font-size: 14px; }
+  nav a.active { color: #89b4fa; }
+  .container { max-width: 900px; margin: 0 auto; padding: 24px; }
+  button { padding: 8px 16px; background: #a6e3a1; color: #11111b; border: none; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; }
+  button.danger { background: #f38ba8; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 12px; }
+  th { text-align: left; color: #6c7086; padding: 10px; border-bottom: 1px solid #313244; }
+  td { padding: 10px; border-bottom: 1px solid #1e1e2e; }
+  .modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); justify-content: center; align-items: center; }
+  .modal-content { background: #1e1e2e; border-radius: 12px; padding: 24px; width: 480px; }
+  .modal input { width: 100%; padding: 10px; background: #11111b; border: 1px solid #313244; border-radius: 8px; color: #cdd6f4; margin-bottom: 12px; }
+  .key-display { background: #11111b; padding: 16px; border-radius: 8px; font-family: monospace; word-break: break-all; margin: 12px 0; color: #f9e2af; }
+  .warning { background: #2a1e2e; border: 1px solid #f38ba8; border-radius: 8px; padding: 12px; font-size: 12px; color: #f38ba8; margin-top: 16px; }
+</style>
+</head>
+<body>
+<nav>
+  <span style="font-weight:bold;color:#89b4fa;">AI Relay</span>
+  <a href="/static/dashboard.html">仪表盘</a>
+  <a href="/static/keys.html" class="active">API Keys</a>
+  <a href="/static/usage.html">用量记录</a>
+  <a href="#" onclick="fetch('/api/auth/logout',{method:'POST'}).then(()=>window.location.href='/static/login.html')" style="margin-left:auto;">退出</a>
+</nav>
+<div class="container">
+  <div style="display:flex;justify-content:space-between;align-items:center;">
+    <h3>我的 API Keys</h3>
+    <button onclick="showCreate()">+ 创建新 Key</button>
+  </div>
+  <table id="keysTable">
+    <tr><th>名称</th><th>Key</th><th>创建时间</th><th>操作</th></tr>
+  </table>
+  <div class="warning">创建 Key 时只显示一次完整密钥，请妥善保存。我们只存储 SHA256 哈希，无法找回。</div>
+</div>
+<div class="modal" id="createModal">
+  <div class="modal-content">
+    <h3>创建新 API Key</h3>
+    <input type="text" id="keyName" placeholder="Key 名称（如：我的项目）">
+    <button onclick="createKey()">创建</button>
+    <div class="key-display" id="newKeyDisplay" style="display:none;"></div>
+    <button onclick="closeCreate()" style="margin-top:8px;background:#6c7086;">关闭</button>
+  </div>
+</div>
+<script>
+async function loadKeys() {
+  const keys = await fetch('/api/keys').then(r => { if (!r.ok) window.location.href='/static/login.html'; return r.json(); });
+  const tbody = document.getElementById('keysTable');
+  tbody.innerHTML = '<tr><th>名称</th><th>Key</th><th>创建时间</th><th>操作</th></tr>';
+  keys.forEach(k => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${k.name}</td><td style="font-family:monospace;color:#f9e2af;">${k.key_prefix}****</td><td style="color:#6c7086;">${k.created_at.slice(0,10)}</td><td><button class="danger" onclick="deleteKey(${k.id})">删除</button></td>`;
+    tbody.appendChild(tr);
+  });
+}
+function showCreate() { document.getElementById('createModal').style.display = 'flex'; }
+function closeCreate() { document.getElementById('createModal').style.display = 'none'; document.getElementById('newKeyDisplay').style.display = 'none'; }
+async function createKey() {
+  const name = document.getElementById('keyName').value || 'default';
+  const res = await fetch('/api/keys', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({name}) });
+  const data = await res.json();
+  document.getElementById('newKeyDisplay').style.display = 'block';
+  document.getElementById('newKeyDisplay').textContent = data.key;
+  loadKeys();
+}
+async function deleteKey(id) { if (confirm('确定删除？')) { await fetch('/api/keys/' + id, {method:'DELETE'}); loadKeys(); } }
+loadKeys();
+</script>
+</body>
+</html>

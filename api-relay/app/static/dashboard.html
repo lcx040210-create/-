@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Relay - 仪表盘</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #11111b; color: #cdd6f4; min-height: 100vh; }
+  nav { background: #1e1e2e; padding: 0 24px; height: 56px; display: flex; align-items: center; gap: 24px; border-bottom: 1px solid #313244; }
+  nav a { color: #6c7086; text-decoration: none; font-size: 14px; }
+  nav a.active { color: #89b4fa; }
+  .container { max-width: 900px; margin: 0 auto; padding: 24px; }
+  .cards { display: flex; gap: 16px; margin-bottom: 24px; }
+  .stat { flex: 1; background: #1e1e2e; border-radius: 10px; padding: 20px; }
+  .stat .label { font-size: 12px; color: #6c7086; margin-bottom: 4px; }
+  .stat .value { font-size: 28px; font-weight: bold; color: #89b4fa; }
+  .stat .hint { font-size: 11px; color: #6c7086; margin-top: 4px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 12px; }
+  th { text-align: left; color: #6c7086; padding: 10px; border-bottom: 1px solid #313244; }
+  td { padding: 10px; border-bottom: 1px solid #1e1e2e; }
+</style>
+</head>
+<body>
+<nav>
+  <span style="font-weight:bold;color:#89b4fa;">AI Relay</span>
+  <a href="/static/dashboard.html" class="active">仪表盘</a>
+  <a href="/static/keys.html">API Keys</a>
+  <a href="/static/usage.html">用量记录</a>
+  <a href="#" onclick="logout()" style="margin-left:auto;">退出</a>
+</nav>
+<div class="container">
+  <div class="cards">
+    <div class="stat"><div class="label">账户余额</div><div class="value" id="balance">--</div><div class="hint">余额不足请联系管理员充值</div></div>
+    <div class="stat"><div class="label">今日调用</div><div class="value" id="todayCalls">--</div><div class="hint" id="todayCost"></div></div>
+  </div>
+  <h3 style="margin-top:24px;">近7天用量</h3>
+  <div id="usageChart" style="background:#1e1e2e;border-radius:10px;padding:20px;height:150px;display:flex;align-items:flex-end;gap:8px;"></div>
+</div>
+<script>
+async function load() {
+  const me = await fetch('/api/me').then(r => { if (!r.ok) window.location.href='/static/login.html'; return r.json(); });
+  document.getElementById('balance').textContent = '¥' + me.balance.toFixed(2);
+  const usage = await fetch('/api/usage?days=7').then(r => r.json());
+  document.getElementById('todayCalls').textContent = usage.total_calls;
+  document.getElementById('todayCost').textContent = '消费 ¥' + usage.total_cost.toFixed(2);
+  const chart = document.getElementById('usageChart');
+  chart.innerHTML = '';
+  const byDay = usage.by_day || [];
+  const maxCalls = Math.max(...byDay.map(d => d.calls), 1);
+  byDay.forEach(d => {
+    const bar = document.createElement('div');
+    bar.style.cssText = `flex:1;background:#89b4fa;height:${(d.calls/maxCalls*100).toFixed(0)}%;border-radius:4px 4px 0 0;min-height:4px;`;
+    bar.title = d.date + ': ' + d.calls + ' calls';
+    chart.appendChild(bar);
+  });
+  const labels = document.createElement('div');
+  labels.style.cssText = 'display:flex;gap:8px;margin-top:8px;font-size:11px;color:#6c7086;';
+  byDay.forEach(d => { const sp = document.createElement('span'); sp.style.flex='1'; sp.style.textAlign='center'; sp.textContent = d.date.slice(5); labels.appendChild(sp); });
+  chart.parentElement.appendChild(labels);
+}
+async function logout() { await fetch('/api/auth/logout', {method:'POST'}); window.location.href='/static/login.html'; }
+load();
+</script>
+</body>
+</html>

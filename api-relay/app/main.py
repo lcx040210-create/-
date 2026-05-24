@@ -20,6 +20,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="AI Relay", lifespan=lifespan)
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
 app.include_router(proxy_router)
 app.include_router(dashboard_router)
 app.include_router(admin_router)

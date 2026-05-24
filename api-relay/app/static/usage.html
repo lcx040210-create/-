@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Relay - 用量记录</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #11111b; color: #cdd6f4; min-height: 100vh; }
+  nav { background: #1e1e2e; padding: 0 24px; height: 56px; display: flex; align-items: center; gap: 24px; border-bottom: 1px solid #313244; }
+  nav a { color: #6c7086; text-decoration: none; font-size: 14px; }
+  nav a.active { color: #89b4fa; }
+  .container { max-width: 900px; margin: 0 auto; padding: 24px; }
+  select, button { padding: 8px 12px; background: #1e1e2e; color: #cdd6f4; border: 1px solid #313244; border-radius: 6px; font-size: 13px; }
+  button { background: #89b4fa; color: #11111b; cursor: pointer; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 12px; }
+  th { text-align: left; color: #6c7086; padding: 10px; border-bottom: 1px solid #313244; }
+  td { padding: 10px; border-bottom: 1px solid #1e1e2e; }
+  .success { color: #a6e3a1; } .error { color: #f38ba8; }
+</style>
+</head>
+<body>
+<nav>
+  <span style="font-weight:bold;color:#89b4fa;">AI Relay</span>
+  <a href="/static/dashboard.html">仪表盘</a>
+  <a href="/static/keys.html">API Keys</a>
+  <a href="/static/usage.html" class="active">用量记录</a>
+  <a href="#" onclick="fetch('/api/auth/logout',{method:'POST'}).then(()=>window.location.href='/static/login.html')" style="margin-left:auto;">退出</a>
+</nav>
+<div class="container">
+  <h3>调用历史</h3>
+  <div style="display:flex;gap:12px;margin:16px 0;">
+    <select id="modelFilter"><option value="">全部模型</option><option>gpt-4o</option><option>gpt-4-turbo</option><option>gpt-5.5</option><option>claude-sonnet-4-6</option><option>claude-opus-4-7</option></select>
+    <button onclick="loadLogs(1)">查询</button>
+  </div>
+  <table id="logsTable">
+    <tr><th>时间</th><th>模型</th><th>Token</th><th>费用</th><th>状态</th></tr>
+  </table>
+  <div id="pagination" style="text-align:center;margin-top:16px;font-size:13px;color:#6c7086;"></div>
+</div>
+<script>
+let currentPage = 1;
+async function loadLogs(page) {
+  currentPage = page;
+  const model = document.getElementById('modelFilter').value;
+  let url = '/api/logs?page=' + page;
+  if (model) url += '&model=' + encodeURIComponent(model);
+  const logs = await fetch(url).then(r => { if (!r.ok) window.location.href='/static/login.html'; return r.json(); });
+  const tbody = document.getElementById('logsTable');
+  tbody.innerHTML = '<tr><th>时间</th><th>模型</th><th>Token</th><th>费用</th><th>状态</th></tr>';
+  logs.forEach(l => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td style="color:#6c7086;">${l.time.slice(11,19)}</td><td>${l.model}</td><td>${l.tokens}</td><td>¥${l.cost.toFixed(6)}</td><td class="${l.status==='success'?'success':'error'}">${l.status}</td>`;
+    tbody.appendChild(tr);
+  });
+  document.getElementById('pagination').innerHTML = `<span style="cursor:pointer;" onclick="loadLogs(${Math.max(1,page-1)})">← 上一页</span> &nbsp; 第 ${page} 页 &nbsp; <span style="cursor:pointer;" onclick="loadLogs(${page+1})">下一页 →</span>`;
+}
+loadLogs(1);
+</script>
+</body>
+</html>
