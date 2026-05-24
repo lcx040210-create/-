@@ -59,6 +59,7 @@ class ProxyCleaner:
             data["model"] = alias_model
             if "id" in data:
                 data["id"] = f"chatcmpl-{uuid.uuid4().hex[:24]}"
+            data.pop("system_fingerprint", None)
             return prefix + json.dumps(data, separators=(",", ":")) + "\n\n"
         except json.JSONDecodeError:
             return chunk
