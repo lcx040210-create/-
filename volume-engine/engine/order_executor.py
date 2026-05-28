@@ -173,3 +173,71 @@ class OrderExecutor:
             logger.error(f"Perpetual round error: {e}")
             await self.risk.record_api_error()
             return RoundResult(symbol=symbol, volume=0, pnl=0, fee=0, rounds=0)
+
+    async def execute_cross_exchange_round(self, symbol: str, adapter_a: ExchangeAdapter,
+                                            adapter_b: ExchangeAdapter, exchange_a: str,
+                                            exchange_b: str) -> RoundResult:
+        """Cross-exchange wash trading: buy on A, sell on B"""
+        try:
+            ob_a = await adapter_a.fetch_order_book(symbol)
+            ob_b = await adapter_b.fetch_order_book(symbol)
+            ticker = await adapter_a.fetch_ticker(symbol)
+            amount_in_base = self.amount / ticker.last
+
+            bid_a = ob_a.bids[0][0]
+            ask_b = ob_b.asks[0][0]
+
+            if bid_a >= ask_b:
+                logger.warning(f"Cross prices unfavorable: A bid {bid_a} >= B ask {ask_b}")
+                return RoundResult(symbol=symbol, volume=0, pnl=0, fee=0, rounds=0)
+
+            buy_order = await adapter_a.create_limit_order(symbol, "buy", amount_in_base, bid_a)
+            sell_order = await adapter_b.create_limit_order(symbol, "sell", amount_in_base, ask_b)
+
+            deadline = asyncio.get_event_loop().time() + self.timeout
+            buy_filled = False
+            sell_filled = False
+
+            while asyncio.get_event_loop().time() < deadline:
+                await asyncio.sleep(1)
+                ob_a_new = await adapter_a.fetch_order_book(symbol)
+                ob_b_new = await adapter_b.fetch_order_book(symbol)
+                if ob_a_new.bids[0][0] >= bid_a:
+                    buy_filled = True
+                if ob_b_new.asks[0][0] <= ask_b:
+                    sell_filled = True
+                if buy_filled and sell_filled:
+                    break
+
+            fee = 0.0
+            pnl = 0.0
+            volume = 0.0
+
+            if buy_filled and sell_filled:
+                close_a = await adapter_a.create_market_order(symbol, "sell", amount_in_base)
+                close_b = await adapter_b.create_market_order(symbol, "buy", amount_in_base)
+                fee = (close_a.fee or 0) + (close_b.fee or 0)
+                pnl = (sell_order.price - buy_order.price) * amount_in_base - fee
+                volume = self.amount * 4
+            elif buy_filled:
+                await adapter_b.cancel_order(sell_order.id, symbol)
+                close_a = await adapter_a.create_market_order(symbol, "sell", amount_in_base)
+                fee = close_a.fee or 0
+                volume = self.amount * 2
+            elif sell_filled:
+                await adapter_a.cancel_order(buy_order.id, symbol)
+                close_b = await adapter_b.create_market_order(symbol, "buy", amount_in_base)
+                fee = close_b.fee or 0
+                volume = self.amount * 2
+            else:
+                await adapter_a.cancel_order(buy_order.id, symbol)
+                await adapter_b.cancel_order(sell_order.id, symbol)
+                return RoundResult(symbol=symbol, volume=0, pnl=0, fee=0, rounds=0)
+
+            await self.risk.record_trade(pnl)
+            return RoundResult(symbol=symbol, volume=volume, pnl=pnl, fee=fee, rounds=1)
+
+        except Exception as e:
+            logger.error(f"Cross-exchange round error: {e}")
+            await self.risk.record_api_error()
+            return RoundResult(symbol=symbol, volume=0, pnl=0, fee=0, rounds=0)
