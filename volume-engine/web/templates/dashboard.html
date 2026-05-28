@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% set active = "dashboard" %}
+{% block content %}
+<div class="grid">
+  <div class="card">
+    <h3>状态</h3>
+    <div class="value" style="font-size:20px;"><span id="status-dot" class="status"></span><span id="status-text">-</span></div>
+  </div>
+  <div class="card">
+    <h3>今日成交量 (USDT)</h3>
+    <div class="value" id="vol">0.00</div>
+  </div>
+  <div class="card">
+    <h3>成交笔数</h3>
+    <div class="value" id="trades">0</div>
+  </div>
+  <div class="card">
+    <h3>今日盈亏 (USDT)</h3>
+    <div class="value" id="pnl">0.00</div>
+  </div>
+</div>
+
+<div class="stats-grid" style="margin-top:16px;">
+  <div class="card"><h3>各交易对分布</h3><canvas id="pairChart" height="200"></canvas></div>
+  <div class="card"><h3>控制</h3>
+    <div style="display:flex;gap:8px;margin-bottom:12px;">
+      <button onclick="engineAction('start')">启动</button>
+      <button class="warn" onclick="engineAction('pause')">暂停</button>
+      <button class="danger" onclick="engineAction('stop')">停止</button>
+    </div>
+    <div style="font-size:13px;color:#8b949e;">模式: {{ config.mode }} | 市场: {{ config.market }} | 每笔: ${{ config.amount_per_trade }}</div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+let chartCtx = document.getElementById('pairChart').getContext('2d');
+let pairChart = new Chart(chartCtx, {type:'doughnut',data:{labels:[],datasets:[{data:[],backgroundColor:['#58a6ff','#3fb950','#d29922','#f85149','#bc8cff']}]}});
+
+function engineAction(action) {
+  fetch('/api/engine/' + action, {method:'POST'}).then(r => r.json()).then(d => console.log(d));
+}
+
+let ws = new WebSocket('ws://' + location.host + '/ws');
+ws.onmessage = function(e) {
+  let d = JSON.parse(e.data);
+  document.getElementById('vol').textContent = d.daily_volume.toLocaleString(undefined, {minimumFractionDigits:2});
+  document.getElementById('trades').textContent = d.daily_trades;
+  document.getElementById('pnl').textContent = d.daily_pnl.toLocaleString(undefined, {minimumFractionDigits:2});
+  document.getElementById('status-text').textContent = d.status;
+  document.getElementById('status-dot').className = 'status ' + d.status;
+  if (d.pair_volumes) {
+    pairChart.data.labels = Object.keys(d.pair_volumes);
+    pairChart.data.datasets[0].data = Object.values(d.pair_volumes);
+    pairChart.update();
+  }
+};
+</script>
+{% endblock %}

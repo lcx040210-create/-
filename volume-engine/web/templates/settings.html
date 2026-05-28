@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% set active = "settings" %}
+{% block content %}
+<div class="card">
+  <h3>交易所配置</h3>
+  <div id="exchanges">加载中...</div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+fetch('/api/exchanges').then(r => r.json()).then(data => {
+  let html = '';
+  data.forEach(ex => {
+    html += `<div class="card" style="margin-bottom:12px;">
+      <h3>${ex.name.toUpperCase()} <span class="status ${ex.enabled ? 'running' : 'stopped'}"></span></h3>
+      <div class="form-group"><label>API Key</label><input type="text" value="${ex.api_key || ''}" onchange="save('${ex.name}','api_key',this.value)"></div>
+      <div class="form-group"><label>API Secret</label><input type="password" value="${ex.api_secret ? '****' : ''}" onchange="save('${ex.name}','api_secret',this.value)"></div>
+      <label><input type="checkbox" ${ex.enabled ? 'checked' : ''} onchange="save('${ex.name}','enabled',this.checked)"> 启用</label>
+      <button onclick="testConn('${ex.name}')" style="margin-left:12px;">测试连接</button>
+    </div>`;
+  });
+  document.getElementById('exchanges').innerHTML = html;
+});
+
+function save(name, key, value) {
+  fetch('/api/exchanges/' + name, {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({[key]:value})});
+}
+
+function testConn(name) {
+  fetch('/api/exchanges/' + name + '/test', {method:'POST'}).then(r => r.json()).then(d => alert(d.ok ? '连接成功' : '连接失败: ' + d.error));
+}
+</script>
+{% endblock %}

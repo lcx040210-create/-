@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% set active = "trades" %}
+{% block content %}
+<div class="card">
+  <h3>交易日志</h3>
+  <table><thead><tr><th>时间</th><th>交易所</th><th>交易对</th><th>方向</th><th>数量</th><th>价格</th><th>手续费</th><th>盈亏</th></tr></thead>
+  <tbody id="trade-body"><tr><td colspan="8" style="color:#8b949e;">加载中...</td></tr></tbody></table>
+  <div style="margin-top:12px;"><button onclick="loadTrades(0)">上一页</button> <span id="page-info"></span> <button onclick="loadTrades(1)">下一页</button></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+let page = 0;
+function loadTrades(dir) {
+  page = dir ? page + 1 : Math.max(0, page - 1);
+  fetch('/api/trades?page=' + page).then(r => r.json()).then(d => {
+    let html = '';
+    d.trades.forEach(t => {
+      html += `<tr><td>${t.created_at}</td><td>${t.exchange}</td><td>${t.symbol}</td><td>${t.side}</td><td>${t.amount}</td><td>${t.price}</td><td>${t.fee}</td><td>${t.pnl}</td></tr>`;
+    });
+    document.getElementById('trade-body').innerHTML = html || '<tr><td colspan="8">无记录</td></tr>';
+    document.getElementById('page-info').textContent = '第 ' + (page + 1) + ' 页';
+  });
+}
+loadTrades(0);
+</script>
+{% endblock %}

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}刷量引擎{% endblock %}</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f1117; color: #e1e4e8; }
+    nav { background: #161b22; border-bottom: 1px solid #30363d; padding: 0 24px; display: flex; align-items: center; height: 48px; gap: 24px; }
+    nav a { color: #8b949e; text-decoration: none; font-size: 14px; }
+    nav a:hover, nav a.active { color: #e1e4e8; }
+    nav .brand { font-weight: 700; color: #58a6ff; margin-right: auto; }
+    main { max-width: 1200px; margin: 24px auto; padding: 0 24px; }
+    .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; margin-bottom: 16px; }
+    .card h3 { font-size: 14px; color: #8b949e; margin-bottom: 8px; }
+    .card .value { font-size: 28px; font-weight: 700; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+    .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid #30363d; font-size: 13px; }
+    th { color: #8b949e; font-weight: 600; }
+    button, .btn { background: #238636; color: #fff; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+    button.danger { background: #da3633; }
+    button.warn { background: #d29922; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    input, select { background: #0d1117; border: 1px solid #30363d; color: #e1e4e8; padding: 8px 12px; border-radius: 6px; font-size: 13px; width: 100%; }
+    .form-group { margin-bottom: 12px; }
+    .form-group label { display: block; font-size: 13px; color: #8b949e; margin-bottom: 4px; }
+    .status { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+    .status.running { background: #3fb950; }
+    .status.paused { background: #d29922; }
+    .status.stopped { background: #f85149; }
+    .alerts { max-height: 300px; overflow-y: auto; }
+  </style>
+</head>
+<body>
+  <nav>
+    <span class="brand">刷量引擎</span>
+    <a href="/" class="{% if active == 'dashboard' %}active{% endif %}">仪表盘</a>
+    <a href="/trades" class="{% if active == 'trades' %}active{% endif %}">交易日志</a>
+    <a href="/settings" class="{% if active == 'settings' %}active{% endif %}">交易所配置</a>
+  </nav>
+  <main>{% block content %}{% endblock %}</main>
+</body>
+</html>

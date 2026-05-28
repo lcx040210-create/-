@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}登录{% endblock %}
+{% block content %}
+<div style="max-width:400px;margin:100px auto;">
+  <div class="card">
+    <h2 style="margin-bottom:16px;">登录</h2>
+    {% if error %}<p style="color:#f85149;margin-bottom:12px;">{{ error }}</p>{% endif %}
+    <form method="post" action="/login">
+      <div class="form-group">
+        <label>密码</label>
+        <input type="password" name="password" required autofocus>
+      </div>
+      <button type="submit" style="width:100%;">登录</button>
+    </form>
+  </div>
+</div>
+{% endblock %}
