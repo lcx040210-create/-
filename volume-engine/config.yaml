@@ -1,0 +1,25 @@
+engine:
+  pairs:
+    - BTC/USDT
+    - ETH/USDT
+  amount_per_trade: 100
+  timeout_seconds: 15
+  max_retries: 3
+  daily_volume_limit: 500000
+  mode: single
+  market: spot
+  order_strategy: follow
+
+risk:
+  max_loss_per_round: 5.0
+  max_loss_daily: 50.0
+  min_balance: 100.0
+  max_hold_seconds: 30
+  max_spread_pct: 0.0005
+  cancel_rate_limit: 0.8
+  no_fill_rounds_limit: 10
+
+web:
+  host: "127.0.0.1"
+  port: 8080
+  password_hash: ""
