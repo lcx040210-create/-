@@ -398,6 +398,23 @@ async function generate() {
     ? '正在提交 ' + params.count + ' 张图片…' : '正在提交…';
 
   try {
+    // Phase 0: Generate and register a userKey in the browser
+    const userKey = Array.from({length: 64}, () => Math.floor(Math.random()*16).toString(16)).join('');
+    debugLog('生成 userKey: ' + userKey.slice(0,12) + '…');
+
+    // Register the userKey by making a request from the browser
+    // Use an img beacon (no CORS needed) to trigger Perchance to register the key
+    debugLog('注册 userKey (checkUserVerificationStatus)…');
+    await new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => { debugLog('userKey 注册完成'); resolve(); };
+      img.onerror = () => { debugLog('userKey 注册完成 (error, 可能已注册)'); resolve(); };
+      img.src = 'https://image-generation.perchance.org/api/checkUserVerificationStatus?userKey=' + userKey + '&cacheKey=' + Math.floor(Math.random()*1000000000);
+      setTimeout(() => { debugLog('userKey 注册超时，继续'); resolve(); }, 5000);
+    });
+
+    params.userKey = userKey;
+
     // Phase 1: Submit generation jobs
     debugLog('POST /api/generate …');
     const submitResp = await fetch('/api/generate', {
@@ -552,6 +569,7 @@ export default {
     }
 
     // POST /api/generate — submit generation jobs, return keys immediately
+    // Requires userKey from frontend (generated & registered by browser)
     if (url.pathname === "/api/generate" && request.method === "POST") {
       try {
         const params = await request.json();
@@ -563,6 +581,13 @@ export default {
         }
 
         const count = Math.min(Math.max(params.count || 1, 1), 4);
+        const userKey = params.userKey;
+        if (!userKey) {
+          return Response.json(
+            { success: false, images: [], error: "缺少 userKey" },
+            { headers: { "Access-Control-Allow-Origin": "*" } }
+          );
+        }
 
         // Step 1: Get ad access code
         let adAccessCode;
@@ -581,40 +606,10 @@ export default {
 
         const genDebug = [];
 
-        // Step 2: Visit embed page first to establish session/cookies
-        let sessionCookies = "";
-        try {
-          const embedResp = await fetch(`${IMAGE_GEN_BASE}/embed`, { headers: IMAGE_GEN_HEADERS });
-          const setCookie = embedResp.headers.get("set-cookie");
-          if (setCookie) {
-            sessionCookies = setCookie.split(",").map(c => c.split(";")[0]).join("; ");
-          }
-          genDebug.push({ step: "embed", hasCookies: !!sessionCookies, cookieSample: sessionCookies.slice(0,100) });
-        } catch (e) {
-          genDebug.push({ step: "embed", error: e.message });
-        }
-
-        // Build headers with cookies for image-gen API
-        const authedHeaders = { ...IMAGE_GEN_HEADERS };
-        if (sessionCookies) {
-          authedHeaders["Cookie"] = sessionCookies;
-        }
-
-        // Step 3: Submit all generation requests
+        // Step 2: Submit all generation requests using the browser-provided userKey
         const tasks = [];
         for (let i = 0; i < count; i++) {
-          const userKey = randomHex(64);
           const requestId = `${Math.random()}`;
-
-          // Register/validate the userKey
-          try {
-            const checkUrl = `${IMAGE_GEN_BASE}/api/checkUserVerificationStatus?userKey=${userKey}&cacheKey=993370269`;
-            const checkResp = await fetch(checkUrl, { headers: authedHeaders });
-            const checkText = await checkResp.text();
-            genDebug.push({ step: "checkKey", userKey: userKey.slice(0,12)+"…", status: checkResp.status, response: checkText.slice(0,200) });
-          } catch (e) {
-            genDebug.push({ step: "checkKey", error: e.message });
-          }
 
           const genUrl = `${IMAGE_GEN_BASE}/api/generate?userKey=${userKey}&requestId=${requestId}&adAccessCode=${adAccessCode}&__cacheBust=${Math.random()}`;
           const genBody = {
@@ -628,17 +623,16 @@ export default {
           };
           const genResp = await fetch(genUrl, {
             method: "POST",
-            headers: { "Content-Type": "text/plain;charset=UTF-8", ...authedHeaders },
+            headers: { "Content-Type": "text/plain;charset=UTF-8", ...IMAGE_GEN_HEADERS },
             body: JSON.stringify(genBody),
           });
           const genRespText = await genResp.text().catch(() => "");
           let genRespData;
           try { genRespData = JSON.parse(genRespText); } catch { genRespData = genRespText.slice(0, 300); }
-          genDebug.push({ step: "generate", userKey: userKey.slice(0,12)+"…", requestId, httpStatus: genResp.status, response: genRespData });
+          genDebug.push({ step: "generate", httpStatus: genResp.status, response: genRespData });
           tasks.push({ userKey, requestId });
         }
 
-        // Return immediately — frontend will poll /api/check
         return Response.json(
           { success: true, tasks, adAccessCode, error: null, genDebug },
           { headers: { "Access-Control-Allow-Origin": "*" } }
