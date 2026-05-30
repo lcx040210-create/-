@@ -344,6 +344,7 @@ async function clearHistory() {
  * ================================================================ */
 
 let abortController = null;
+let pollTimer = null;
 
 async function generate() {
   const prompt = document.getElementById('prompt').value.trim();
@@ -355,14 +356,16 @@ async function generate() {
   const resultCard = document.getElementById('resultCard');
   const resultGrid = document.getElementById('resultGrid');
 
+  // Clean up any previous run
+  if (abortController) abortController.abort();
+  if (pollTimer) clearInterval(pollTimer);
+  abortController = new AbortController();
+
   btn.disabled = true;
   statusArea.classList.remove('hidden');
   errorArea.classList.add('hidden');
   resultCard.classList.add('hidden');
   resultGrid.innerHTML = '';
-
-  if (abortController) abortController.abort();
-  abortController = new AbortController();
 
   const params = {
     prompt: prompt,
@@ -373,42 +376,98 @@ async function generate() {
     count: parseInt(document.getElementById('count').value),
   };
 
-  if (params.count > 1) {
-    document.querySelector('.status-text').textContent = '正在生成 ' + params.count + ' 张图片，预计 10-60 秒…';
-  } else {
-    document.querySelector('.status-text').textContent = '正在生成，预计 10-30 秒…';
-  }
+  document.querySelector('.status-text').textContent = params.count > 1
+    ? '正在提交 ' + params.count + ' 张图片…' : '正在提交…';
 
   try {
-    const timeoutId = setTimeout(() => abortController.abort(), ${FRONTEND_TIMEOUT_MS});
-
-    const resp = await fetch('/api/generate', {
+    // Phase 1: Submit generation jobs
+    const submitResp = await fetch('/api/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params),
       signal: abortController.signal,
     });
+    const submitData = await submitResp.json();
 
-    clearTimeout(timeoutId);
-
-    const data = await resp.json();
-
-    if (data.success && data.images.length > 0) {
-      resultCard.classList.remove('hidden');
-      for (const img of data.images) {
-        const el = document.createElement('img');
-        el.src = img;
-        el.alt = prompt;
-        el.onclick = () => openModal(img);
-        resultGrid.appendChild(el);
-      }
-      await saveToHistory(
-        params.prompt, params.negativePrompt, params.resolution,
-        params.guidanceScale, params.seed, data.images
-      );
-    } else {
-      throw new Error(data.error || '生成失败');
+    if (!submitData.success) {
+      throw new Error(submitData.error || '提交失败');
     }
+
+    const collected = [];
+    let tasks = submitData.tasks;
+    const adAccessCode = submitData.adAccessCode;
+    const startTime = Date.now();
+    const maxWait = 90000; // 90 seconds max total
+
+    document.querySelector('.status-text').textContent = '正在生成，预计 10-60 秒…';
+
+    // Phase 2: Poll for completion
+    pollTimer = setInterval(async () => {
+      try {
+        const checkResp = await fetch('/api/check', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tasks, adAccessCode }),
+          signal: abortController.signal,
+        });
+        const checkData = await checkResp.json();
+
+        if (checkData.success && checkData.images.length > 0) {
+          collected.push(...checkData.images);
+          for (const img of checkData.images) {
+            const el = document.createElement('img');
+            el.src = img;
+            el.alt = prompt;
+            el.onclick = () => openModal(img);
+            resultGrid.appendChild(el);
+          }
+          resultCard.classList.remove('hidden');
+        }
+
+        if (checkData.allDone) {
+          // All done!
+          clearInterval(pollTimer);
+          pollTimer = null;
+          btn.disabled = false;
+          statusArea.classList.add('hidden');
+
+          if (collected.length > 0) {
+            await saveToHistory(params.prompt, params.negativePrompt, params.resolution,
+              params.guidanceScale, params.seed, collected);
+          } else {
+            throw new Error('生成完成但未获取到图片');
+          }
+        } else if (Date.now() - startTime > maxWait) {
+          // Timeout
+          clearInterval(pollTimer);
+          pollTimer = null;
+          btn.disabled = false;
+          statusArea.classList.add('hidden');
+          if (collected.length > 0) {
+            await saveToHistory(params.prompt, params.negativePrompt, params.resolution,
+              params.guidanceScale, params.seed, collected);
+            document.querySelector('.status-text').textContent = '部分图片生成超时，已显示完成的图片';
+          } else {
+            throw new Error('生成超时，请重试');
+          }
+        } else {
+          tasks = checkData.pending;
+          const elapsed = Math.round((Date.now() - startTime) / 1000);
+          document.querySelector('.status-text').textContent =
+            '正在生成… (' + elapsed + 's) 已完成: ' + collected.length + '/' + params.count;
+        }
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          clearInterval(pollTimer);
+          pollTimer = null;
+          document.getElementById('errorText').textContent = '错误: ' + err.message;
+          errorArea.classList.remove('hidden');
+          btn.disabled = false;
+          statusArea.classList.add('hidden');
+        }
+      }
+    }, 2000); // Poll every 2 seconds
+
   } catch (err) {
     if (err.name === 'AbortError') {
       document.getElementById('errorText').textContent = '生成超时，请重试';
@@ -416,10 +475,8 @@ async function generate() {
       document.getElementById('errorText').textContent = '错误: ' + err.message;
     }
     errorArea.classList.remove('hidden');
-  } finally {
     btn.disabled = false;
     statusArea.classList.add('hidden');
-    abortController = null;
   }
 }
 
@@ -461,11 +518,10 @@ export default {
       });
     }
 
-    // POST /api/generate — proxy to Perchance
+    // POST /api/generate — submit generation jobs, return keys immediately
     if (url.pathname === "/api/generate" && request.method === "POST") {
       try {
         const params = await request.json();
-
         if (!params.prompt) {
           return Response.json(
             { success: false, images: [], error: "提示词不能为空" },
@@ -480,12 +536,8 @@ export default {
         try {
           const adResp = await fetch(`${PERCHANCE_MAIN}/api/getAccessCodeForAdPoweredStuff?__cacheBust=${Math.random()}`, { headers: BROWSER_HEADERS });
           const adText = await adResp.text();
-          try {
-            const adJson = JSON.parse(adText);
-            adAccessCode = adJson.adAccessCode || adJson.code || adJson;
-          } catch {
-            adAccessCode = adText.trim(); // plain string response
-          }
+          try { const adJson = JSON.parse(adText); adAccessCode = adJson.adAccessCode || adJson.code || adJson; }
+          catch { adAccessCode = adText.trim(); }
           if (!adAccessCode) throw new Error("No adAccessCode in response: " + adText.slice(0, 200));
         } catch (err) {
           return Response.json(
@@ -495,14 +547,10 @@ export default {
         }
 
         // Step 2: Submit all generation requests
-        const userKeys = [];
-        const requestIds = [];
+        const tasks = [];
         for (let i = 0; i < count; i++) {
           const userKey = randomHex(64);
           const requestId = `${Math.random()}`;
-          userKeys.push(userKey);
-          requestIds.push(requestId);
-
           const genUrl = `${IMAGE_GEN_BASE}/api/generate?userKey=${userKey}&requestId=${requestId}&adAccessCode=${adAccessCode}&__cacheBust=${Math.random()}`;
           const genBody = {
             prompt: params.prompt,
@@ -510,94 +558,87 @@ export default {
             seed: params.seed ?? -1,
             resolution: params.resolution || "512x768",
             guidanceScale: params.guidanceScale ?? 7,
-            channel: CHANNEL,
-            subChannel: "public",
-            userKey: userKey,
-            adAccessCode: adAccessCode,
-            requestId: requestId,
+            channel: CHANNEL, subChannel: "public",
+            userKey, adAccessCode, requestId,
           };
           await fetch(genUrl, {
             method: "POST",
             headers: { "Content-Type": "text/plain;charset=UTF-8", ...IMAGE_GEN_HEADERS },
             body: JSON.stringify(genBody),
           });
+          tasks.push({ userKey, requestId });
         }
 
-        // Step 3: Poll for completion
-        const imageTokens = [];
-        const deadline = Date.now() + MAX_POLL_SECONDS * 1000;
-        const pendingKeys = new Set(userKeys);
-        const results = new Map();
-
-        while (pendingKeys.size > 0 && Date.now() < deadline) {
-          for (const userKey of [...pendingKeys]) {
-            try {
-              const awaitUrl = `${IMAGE_GEN_BASE}/api/awaitExistingGenerationRequest?userKey=${userKey}&__cacheBust=${Math.random()}`;
-              const awaitResp = await fetch(awaitUrl, { headers: IMAGE_GEN_HEADERS });
-              if (awaitResp.ok) {
-                const awaitData = await awaitResp.json();
-                // Response format: { status: "done", imageToken: "v1.xxx", ... } or { status: "generating" }
-                if (awaitData && (awaitData.imageToken || awaitData.images || awaitData.status === "done")) {
-                  const token = awaitData.imageToken || (awaitData.images && awaitData.images[0]) || awaitData.token;
-                  if (token) {
-                    results.set(userKey, token);
-                    pendingKeys.delete(userKey);
-                  }
-                }
-              }
-            } catch (e) {
-              // ignore individual poll errors, keep trying
-            }
-          }
-          if (pendingKeys.size > 0) {
-            await new Promise(r => setTimeout(r, 2000)); // Wait 2s between polls
-          }
-        }
-
-        if (results.size === 0) {
-          return Response.json(
-            { success: false, images: [], error: "生成超时，请重试" },
-            { headers: { "Access-Control-Allow-Origin": "*" } }
-          );
-        }
-
-        // Step 4: Download images and convert to Base64
-        const base64Images = [];
-        for (const userKey of userKeys) {
-          const token = results.get(userKey);
-          if (!token) continue;
-          try {
-            const downloadUrl = `${IMAGE_GEN_BASE}/api/downloadTemporaryImageViaProxy?t=${encodeURIComponent(token)}`;
-            const imgResp = await fetch(downloadUrl, { headers: IMAGE_GEN_HEADERS });
-            if (!imgResp.ok) continue;
-            const blob = await imgResp.blob();
-            const buffer = await blob.arrayBuffer();
-            const bytes = new Uint8Array(buffer);
-            let binary = "";
-            for (let i = 0; i < bytes.length; i++) {
-              binary += String.fromCharCode(bytes[i]);
-            }
-            base64Images.push("data:" + (blob.type || "image/png") + ";base64," + btoa(binary));
-          } catch (e) {
-            console.error("Download failed for", userKey, e.message);
-          }
-        }
-
-        if (base64Images.length === 0) {
-          return Response.json(
-            { success: false, images: [], error: "图片下载失败" },
-            { headers: { "Access-Control-Allow-Origin": "*" } }
-          );
-        }
-
+        // Return immediately — frontend will poll /api/check
         return Response.json(
-          { success: true, images: base64Images, error: null },
+          { success: true, tasks, adAccessCode, error: null },
           { headers: { "Access-Control-Allow-Origin": "*" } }
         );
-
       } catch (err) {
         return Response.json(
           { success: false, images: [], error: "服务器错误: " + err.message },
+          { status: 500, headers: { "Access-Control-Allow-Origin": "*" } }
+        );
+      }
+    }
+
+    // POST /api/check — poll generation status and return completed images
+    if (url.pathname === "/api/check" && request.method === "POST") {
+      try {
+        const body = await request.json();
+        const tasks = body.tasks || [];
+        const adAccessCode = body.adAccessCode;
+
+        if (!tasks.length) {
+          return Response.json(
+            { success: false, images: [], error: "无任务" },
+            { headers: { "Access-Control-Allow-Origin": "*" } }
+          );
+        }
+
+        const completed = [];
+        const pending = [];
+
+        for (const task of tasks) {
+          try {
+            const awaitUrl = `${IMAGE_GEN_BASE}/api/awaitExistingGenerationRequest?userKey=${task.userKey}&__cacheBust=${Math.random()}`;
+            const awaitResp = await fetch(awaitUrl, { headers: IMAGE_GEN_HEADERS });
+            if (!awaitResp.ok) {
+              pending.push(task);
+              continue;
+            }
+            const awaitData = await awaitResp.json();
+            // Response: { status: "done", imageToken: "v1.xxx" } or still-generating response
+            const token = awaitData?.imageToken || (awaitData?.images?.[0]) || awaitData?.token;
+            if (token) {
+              // Download and convert to Base64
+              const downloadUrl = `${IMAGE_GEN_BASE}/api/downloadTemporaryImageViaProxy?t=${encodeURIComponent(token)}`;
+              const imgResp = await fetch(downloadUrl, { headers: IMAGE_GEN_HEADERS });
+              if (imgResp.ok) {
+                const blob = await imgResp.blob();
+                const buffer = await blob.arrayBuffer();
+                const bytes = new Uint8Array(buffer);
+                let binary = "";
+                for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+                completed.push("data:" + (blob.type || "image/png") + ";base64," + btoa(binary));
+              } else {
+                pending.push(task); // download failed, retry
+              }
+            } else {
+              pending.push(task); // still generating
+            }
+          } catch (e) {
+            pending.push(task); // error, retry next poll
+          }
+        }
+
+        return Response.json(
+          { success: true, images: completed, pending, allDone: pending.length === 0, error: null },
+          { headers: { "Access-Control-Allow-Origin": "*" } }
+        );
+      } catch (err) {
+        return Response.json(
+          { success: false, images: [], error: "检查状态失败: " + err.message },
           { status: 500, headers: { "Access-Control-Allow-Origin": "*" } }
         );
       }
