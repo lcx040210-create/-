@@ -601,32 +601,47 @@ export default {
 
         for (const task of tasks) {
           try {
-            const awaitUrl = `${IMAGE_GEN_BASE}/api/awaitExistingGenerationRequest?userKey=${task.userKey}&__cacheBust=${Math.random()}`;
-            const awaitResp = await fetch(awaitUrl, { headers: IMAGE_GEN_HEADERS });
-            if (!awaitResp.ok) {
-              pending.push(task);
-              continue;
-            }
-            const awaitData = await awaitResp.json();
-            // Response: { status: "done", imageToken: "v1.xxx" } or still-generating response
-            const token = awaitData?.imageToken || (awaitData?.images?.[0]) || awaitData?.token;
-            if (token) {
-              // Download and convert to Base64
-              const downloadUrl = `${IMAGE_GEN_BASE}/api/downloadTemporaryImageViaProxy?t=${encodeURIComponent(token)}`;
-              const imgResp = await fetch(downloadUrl, { headers: IMAGE_GEN_HEADERS });
-              if (imgResp.ok) {
-                const blob = await imgResp.blob();
-                const buffer = await blob.arrayBuffer();
-                const bytes = new Uint8Array(buffer);
-                let binary = "";
-                for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-                completed.push("data:" + (blob.type || "image/png") + ";base64," + btoa(binary));
-              } else {
-                pending.push(task); // download failed, retry
+            // Use getUserQueuePosition for fast status check (non-blocking)
+            const posUrl = `${IMAGE_GEN_BASE}/api/getUserQueuePosition?userKey=${task.userKey}&requestId=${task.requestId}`;
+            const posResp = await fetch(posUrl, { headers: IMAGE_GEN_HEADERS });
+            let isReady = false;
+            if (posResp.ok) {
+              const posData = await posResp.json();
+              // Response: { position: 0 } or { status: "done" } means ready
+              if (posData && (posData.position === 0 || posData.status === "done" || posData.ready)) {
+                isReady = true;
               }
-            } else {
-              pending.push(task); // still generating
             }
+
+            if (isReady) {
+              // Now safely call await to get the image token (should return immediately)
+              const awaitUrl = `${IMAGE_GEN_BASE}/api/awaitExistingGenerationRequest?userKey=${task.userKey}&__cacheBust=${Math.random()}`;
+              const awaitResp = await fetch(awaitUrl, {
+                headers: IMAGE_GEN_HEADERS,
+                signal: AbortSignal.timeout(5000), // 5s timeout
+              });
+              if (awaitResp.ok) {
+                const awaitData = await awaitResp.json();
+                const token = awaitData?.imageToken || (awaitData?.images?.[0]) || awaitData?.token;
+                if (token) {
+                  const downloadUrl = `${IMAGE_GEN_BASE}/api/downloadTemporaryImageViaProxy?t=${encodeURIComponent(token)}`;
+                  const imgResp = await fetch(downloadUrl, {
+                    headers: IMAGE_GEN_HEADERS,
+                    signal: AbortSignal.timeout(10000),
+                  });
+                  if (imgResp.ok) {
+                    const blob = await imgResp.blob();
+                    const buffer = await blob.arrayBuffer();
+                    const bytes = new Uint8Array(buffer);
+                    let binary = "";
+                    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+                    completed.push("data:" + (blob.type || "image/png") + ";base64," + btoa(binary));
+                    continue; // done with this task
+                  }
+                }
+              }
+            }
+            pending.push(task); // still generating or failed, retry
           } catch (e) {
             pending.push(task); // error, retry next poll
           }
