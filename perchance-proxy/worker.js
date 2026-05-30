@@ -579,12 +579,41 @@ export default {
           );
         }
 
-        // Step 2: Submit all generation requests
+        // Step 2: Visit embed page first to establish session/cookies
+        let sessionCookies = "";
+        try {
+          const embedResp = await fetch(`${IMAGE_GEN_BASE}/embed`, { headers: IMAGE_GEN_HEADERS });
+          const setCookie = embedResp.headers.get("set-cookie");
+          if (setCookie) {
+            sessionCookies = setCookie.split(",").map(c => c.split(";")[0]).join("; ");
+          }
+          genDebug.push({ step: "embed", hasCookies: !!sessionCookies, cookieSample: sessionCookies.slice(0,100) });
+        } catch (e) {
+          genDebug.push({ step: "embed", error: e.message });
+        }
+
+        // Build headers with cookies for image-gen API
+        const authedHeaders = { ...IMAGE_GEN_HEADERS };
+        if (sessionCookies) {
+          authedHeaders["Cookie"] = sessionCookies;
+        }
+
+        // Step 3: Submit all generation requests
         const tasks = [];
-        const genDebug = [];
         for (let i = 0; i < count; i++) {
           const userKey = randomHex(64);
           const requestId = `${Math.random()}`;
+
+          // Register/validate the userKey
+          try {
+            const checkUrl = `${IMAGE_GEN_BASE}/api/checkUserVerificationStatus?userKey=${userKey}&cacheKey=993370269`;
+            const checkResp = await fetch(checkUrl, { headers: authedHeaders });
+            const checkText = await checkResp.text();
+            genDebug.push({ step: "checkKey", userKey: userKey.slice(0,12)+"…", status: checkResp.status, response: checkText.slice(0,200) });
+          } catch (e) {
+            genDebug.push({ step: "checkKey", error: e.message });
+          }
+
           const genUrl = `${IMAGE_GEN_BASE}/api/generate?userKey=${userKey}&requestId=${requestId}&adAccessCode=${adAccessCode}&__cacheBust=${Math.random()}`;
           const genBody = {
             prompt: params.prompt,
@@ -597,13 +626,13 @@ export default {
           };
           const genResp = await fetch(genUrl, {
             method: "POST",
-            headers: { "Content-Type": "text/plain;charset=UTF-8", ...IMAGE_GEN_HEADERS },
+            headers: { "Content-Type": "text/plain;charset=UTF-8", ...authedHeaders },
             body: JSON.stringify(genBody),
           });
           const genRespText = await genResp.text().catch(() => "");
           let genRespData;
           try { genRespData = JSON.parse(genRespText); } catch { genRespData = genRespText.slice(0, 300); }
-          genDebug.push({ userKey: userKey.slice(0,12)+"…", requestId, httpStatus: genResp.status, response: genRespData });
+          genDebug.push({ step: "generate", userKey: userKey.slice(0,12)+"…", requestId, httpStatus: genResp.status, response: genRespData });
           tasks.push({ userKey, requestId });
         }
 
