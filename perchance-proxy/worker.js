@@ -439,6 +439,7 @@ async function generate() {
         });
         const checkData = await checkResp.json();
         debugLog('检查结果: ' + JSON.stringify({success: checkData.success, images: checkData.images?.length, pending: checkData.pending?.length, allDone: checkData.allDone, error: checkData.error}));
+        if (checkData.debug) debugLog('Perchance原始响应: ' + JSON.stringify(checkData.debug, null, 2));
 
         if (checkData.success && checkData.images.length > 0) {
           debugLog('✓ 获得 ' + checkData.images.length + ' 张图片');
@@ -629,19 +630,47 @@ export default {
 
         const completed = [];
         const pending = [];
+        let debug = [];
 
         for (const task of tasks) {
           try {
             // Use getUserQueuePosition for fast status check (non-blocking)
             const posUrl = `${IMAGE_GEN_BASE}/api/getUserQueuePosition?userKey=${task.userKey}&requestId=${task.requestId}`;
             const posResp = await fetch(posUrl, { headers: IMAGE_GEN_HEADERS });
+            let posText = "";
             let isReady = false;
             if (posResp.ok) {
-              const posData = await posResp.json();
-              // Response: { position: 0 } or { status: "done" } means ready
-              if (posData && (posData.position === 0 || posData.status === "done" || posData.ready)) {
-                isReady = true;
-              }
+              posText = await posResp.text();
+              try {
+                const posData = JSON.parse(posText);
+                debug.push({ step: "getUserQueuePosition", status: posResp.status, data: posData });
+                // Check various completion signals
+                if (posData && (
+                  posData.position === 0 ||
+                  posData.status === "done" ||
+                  posData.status === "complete" ||
+                  posData.ready === true ||
+                  posData.done === true ||
+                  (posData.requestStatus && posData.requestStatus === "done")
+                )) {
+                  isReady = true;
+                }
+              } catch { debug.push({ step: "getUserQueuePosition", status: posResp.status, raw: posText.slice(0, 200) }); }
+            } else {
+              debug.push({ step: "getUserQueuePosition", error: "HTTP " + posResp.status });
+            }
+
+            if (isReady) {
+              // Now safely call await to get the image token (should return immediately)
+              const awaitUrl = `${IMAGE_GEN_BASE}/api/awaitExistingGenerationRequest?userKey=${task.userKey}&__cacheBust=${Math.random()}`;
+              const awaitResp = await fetch(awaitUrl, {
+                headers: IMAGE_GEN_HEADERS,
+                signal: AbortSignal.timeout(5000),
+              });
+              if (awaitResp.ok) {
+                const awaitData = await awaitResp.json();
+                debug.push({ step: "awaitExistingGenerationRequest", data: awaitData });
+                const token = awaitData?.imageToken || (awaitData?.images?.[0]) || awaitData?.token;
             }
 
             if (isReady) {
@@ -679,7 +708,7 @@ export default {
         }
 
         return Response.json(
-          { success: true, images: completed, pending, allDone: pending.length === 0, error: null },
+          { success: true, images: completed, pending, allDone: pending.length === 0, error: null, debug },
           { headers: { "Access-Control-Allow-Origin": "*" } }
         );
       } catch (err) {
