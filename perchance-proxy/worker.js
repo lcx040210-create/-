@@ -19,6 +19,24 @@ const CHANNEL = "ai-text-to-image-generator";
 const FRONTEND_TIMEOUT_MS = 20000;
 const MAX_POLL_SECONDS = 60;
 
+// Browser-like headers to bypass Cloudflare bot detection
+const BROWSER_HEADERS = {
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+  "Accept": "*/*",
+  "Accept-Language": "en-US,en;q=0.9",
+  "Sec-Fetch-Dest": "empty",
+  "Sec-Fetch-Mode": "cors",
+  "Sec-Fetch-Site": "same-origin",
+  "Origin": PERCHANCE_MAIN,
+  "Referer": PERCHANCE_MAIN + "/ai-text-to-image-generator",
+};
+
+const IMAGE_GEN_HEADERS = {
+  ...BROWSER_HEADERS,
+  "Origin": IMAGE_GEN_BASE,
+  "Referer": IMAGE_GEN_BASE + "/embed",
+};
+
 /* ================================================================
  * HELPERS
  * ================================================================ */
@@ -460,7 +478,7 @@ export default {
         // Step 1: Get ad access code
         let adAccessCode;
         try {
-          const adResp = await fetch(`${PERCHANCE_MAIN}/api/getAccessCodeForAdPoweredStuff?__cacheBust=${Math.random()}`);
+          const adResp = await fetch(`${PERCHANCE_MAIN}/api/getAccessCodeForAdPoweredStuff?__cacheBust=${Math.random()}`, { headers: BROWSER_HEADERS });
           const adData = await adResp.json();
           adAccessCode = typeof adData === "string" ? adData : (adData.adAccessCode || adData.code);
           if (!adAccessCode) throw new Error("No adAccessCode in response: " + JSON.stringify(adData).slice(0, 200));
@@ -495,7 +513,7 @@ export default {
           };
           await fetch(genUrl, {
             method: "POST",
-            headers: { "Content-Type": "text/plain;charset=UTF-8", "Origin": IMAGE_GEN_BASE, "Referer": `${IMAGE_GEN_BASE}/embed` },
+            headers: { "Content-Type": "text/plain;charset=UTF-8", ...IMAGE_GEN_HEADERS },
             body: JSON.stringify(genBody),
           });
         }
@@ -510,9 +528,7 @@ export default {
           for (const userKey of [...pendingKeys]) {
             try {
               const awaitUrl = `${IMAGE_GEN_BASE}/api/awaitExistingGenerationRequest?userKey=${userKey}&__cacheBust=${Math.random()}`;
-              const awaitResp = await fetch(awaitUrl, {
-                headers: { "Origin": IMAGE_GEN_BASE, "Referer": `${IMAGE_GEN_BASE}/embed` },
-              });
+              const awaitResp = await fetch(awaitUrl, { headers: IMAGE_GEN_HEADERS });
               if (awaitResp.ok) {
                 const awaitData = await awaitResp.json();
                 // Response format: { status: "done", imageToken: "v1.xxx", ... } or { status: "generating" }
@@ -547,9 +563,7 @@ export default {
           if (!token) continue;
           try {
             const downloadUrl = `${IMAGE_GEN_BASE}/api/downloadTemporaryImageViaProxy?t=${encodeURIComponent(token)}`;
-            const imgResp = await fetch(downloadUrl, {
-              headers: { "Origin": IMAGE_GEN_BASE, "Referer": `${IMAGE_GEN_BASE}/embed` },
-            });
+            const imgResp = await fetch(downloadUrl, { headers: IMAGE_GEN_HEADERS });
             if (!imgResp.ok) continue;
             const blob = await imgResp.blob();
             const buffer = await blob.arrayBuffer();
