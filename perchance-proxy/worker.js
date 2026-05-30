@@ -217,6 +217,12 @@ const HTML_PAGE = `<!DOCTYPE html>
     <button class="btn-primary" onclick="generate()" style="margin-top:12px;">重试</button>
   </div>
 
+  <!-- Debug Log -->
+  <div class="card hidden" id="debugCard">
+    <h3 style="font-size:0.9rem; margin-bottom:8px;">🔍 调试日志</h3>
+    <div id="debugLog" style="font-family: monospace; font-size: 0.75rem; color: var(--muted); max-height: 300px; overflow-y: auto; white-space: pre-wrap; line-height: 1.4;"></div>
+  </div>
+
   <!-- Result Area -->
   <div class="card hidden" id="resultCard">
     <div class="result-grid" id="resultGrid"></div>
@@ -346,6 +352,15 @@ async function clearHistory() {
 let abortController = null;
 let pollTimer = null;
 
+function debugLog(msg) {
+  const card = document.getElementById('debugCard');
+  const log = document.getElementById('debugLog');
+  card.classList.remove('hidden');
+  const time = new Date().toLocaleTimeString();
+  log.textContent += '[' + time + '] ' + msg + '\\n';
+  log.scrollTop = log.scrollHeight;
+}
+
 async function generate() {
   const prompt = document.getElementById('prompt').value.trim();
   if (!prompt) { alert('请输入提示词'); return; }
@@ -355,6 +370,8 @@ async function generate() {
   const errorArea = document.getElementById('errorArea');
   const resultCard = document.getElementById('resultCard');
   const resultGrid = document.getElementById('resultGrid');
+  const debugLogEl = document.getElementById('debugLog');
+  debugLogEl.textContent = ''; // clear previous
 
   // Clean up any previous run
   if (abortController) abortController.abort();
@@ -376,34 +393,44 @@ async function generate() {
     count: parseInt(document.getElementById('count').value),
   };
 
+  debugLog('开始生成，参数: ' + JSON.stringify(params));
   document.querySelector('.status-text').textContent = params.count > 1
     ? '正在提交 ' + params.count + ' 张图片…' : '正在提交…';
 
   try {
     // Phase 1: Submit generation jobs
+    debugLog('POST /api/generate …');
     const submitResp = await fetch('/api/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params),
       signal: abortController.signal,
     });
+    debugLog('提交响应 HTTP ' + submitResp.status);
     const submitData = await submitResp.json();
+    debugLog('提交结果: ' + JSON.stringify({success: submitData.success, tasks: submitData.tasks?.length, error: submitData.error}));
 
     if (!submitData.success) {
       throw new Error(submitData.error || '提交失败');
     }
 
+    debugLog('获得 ' + submitData.tasks.length + ' 个任务, adAccessCode=' + (submitData.adAccessCode||'').slice(0,12)+'…');
+
     const collected = [];
     let tasks = submitData.tasks;
     const adAccessCode = submitData.adAccessCode;
     const startTime = Date.now();
-    const maxWait = 90000; // 90 seconds max total
+    const maxWait = 90000;
+    let pollCount = 0;
 
     document.querySelector('.status-text').textContent = '正在生成，预计 10-60 秒…';
 
     // Phase 2: Poll for completion
     pollTimer = setInterval(async () => {
+      pollCount++;
+      const elapsed = Math.round((Date.now() - startTime) / 1000);
       try {
+        debugLog('轮询 #' + pollCount + ' (' + elapsed + 's) POST /api/check …');
         const checkResp = await fetch('/api/check', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -411,8 +438,10 @@ async function generate() {
           signal: abortController.signal,
         });
         const checkData = await checkResp.json();
+        debugLog('检查结果: ' + JSON.stringify({success: checkData.success, images: checkData.images?.length, pending: checkData.pending?.length, allDone: checkData.allDone, error: checkData.error}));
 
         if (checkData.success && checkData.images.length > 0) {
+          debugLog('✓ 获得 ' + checkData.images.length + ' 张图片');
           collected.push(...checkData.images);
           for (const img of checkData.images) {
             const el = document.createElement('img');
@@ -425,24 +454,25 @@ async function generate() {
         }
 
         if (checkData.allDone) {
-          // All done!
           clearInterval(pollTimer);
           pollTimer = null;
           btn.disabled = false;
           statusArea.classList.add('hidden');
+          debugLog('全部完成！共 ' + collected.length + ' 张图片');
 
           if (collected.length > 0) {
             await saveToHistory(params.prompt, params.negativePrompt, params.resolution,
               params.guidanceScale, params.seed, collected);
           } else {
+            debugLog('✗ 完成但无图片');
             throw new Error('生成完成但未获取到图片');
           }
         } else if (Date.now() - startTime > maxWait) {
-          // Timeout
           clearInterval(pollTimer);
           pollTimer = null;
           btn.disabled = false;
           statusArea.classList.add('hidden');
+          debugLog('超时 (' + maxWait/1000 + 's)，已完成 ' + collected.length + '/' + params.count);
           if (collected.length > 0) {
             await saveToHistory(params.prompt, params.negativePrompt, params.resolution,
               params.guidanceScale, params.seed, collected);
@@ -452,7 +482,6 @@ async function generate() {
           }
         } else {
           tasks = checkData.pending;
-          const elapsed = Math.round((Date.now() - startTime) / 1000);
           document.querySelector('.status-text').textContent =
             '正在生成… (' + elapsed + 's) 已完成: ' + collected.length + '/' + params.count;
         }
@@ -460,15 +489,17 @@ async function generate() {
         if (err.name !== 'AbortError') {
           clearInterval(pollTimer);
           pollTimer = null;
+          debugLog('✗ 轮询错误: ' + err.message);
           document.getElementById('errorText').textContent = '错误: ' + err.message;
           errorArea.classList.remove('hidden');
           btn.disabled = false;
           statusArea.classList.add('hidden');
         }
       }
-    }, 2000); // Poll every 2 seconds
+    }, 2000);
 
   } catch (err) {
+    debugLog('✗ 提交错误: ' + err.message);
     if (err.name === 'AbortError') {
       document.getElementById('errorText').textContent = '生成超时，请重试';
     } else {
