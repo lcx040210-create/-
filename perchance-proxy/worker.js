@@ -409,6 +409,7 @@ async function generate() {
     debugLog('提交响应 HTTP ' + submitResp.status);
     const submitData = await submitResp.json();
     debugLog('提交结果: ' + JSON.stringify({success: submitData.success, tasks: submitData.tasks?.length, error: submitData.error}));
+    if (submitData.genDebug) debugLog('Generate API响应: ' + JSON.stringify(submitData.genDebug, null, 2));
 
     if (!submitData.success) {
       throw new Error(submitData.error || '提交失败');
@@ -580,6 +581,7 @@ export default {
 
         // Step 2: Submit all generation requests
         const tasks = [];
+        const genDebug = [];
         for (let i = 0; i < count; i++) {
           const userKey = randomHex(64);
           const requestId = `${Math.random()}`;
@@ -593,17 +595,21 @@ export default {
             channel: CHANNEL, subChannel: "public",
             userKey, adAccessCode, requestId,
           };
-          await fetch(genUrl, {
+          const genResp = await fetch(genUrl, {
             method: "POST",
             headers: { "Content-Type": "text/plain;charset=UTF-8", ...IMAGE_GEN_HEADERS },
             body: JSON.stringify(genBody),
           });
+          const genRespText = await genResp.text().catch(() => "");
+          let genRespData;
+          try { genRespData = JSON.parse(genRespText); } catch { genRespData = genRespText.slice(0, 300); }
+          genDebug.push({ userKey: userKey.slice(0,12)+"…", requestId, httpStatus: genResp.status, response: genRespData });
           tasks.push({ userKey, requestId });
         }
 
         // Return immediately — frontend will poll /api/check
         return Response.json(
-          { success: true, tasks, adAccessCode, error: null },
+          { success: true, tasks, adAccessCode, error: null, genDebug },
           { headers: { "Access-Control-Allow-Origin": "*" } }
         );
       } catch (err) {
