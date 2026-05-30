@@ -671,18 +671,6 @@ export default {
                 const awaitData = await awaitResp.json();
                 debug.push({ step: "awaitExistingGenerationRequest", data: awaitData });
                 const token = awaitData?.imageToken || (awaitData?.images?.[0]) || awaitData?.token;
-            }
-
-            if (isReady) {
-              // Now safely call await to get the image token (should return immediately)
-              const awaitUrl = `${IMAGE_GEN_BASE}/api/awaitExistingGenerationRequest?userKey=${task.userKey}&__cacheBust=${Math.random()}`;
-              const awaitResp = await fetch(awaitUrl, {
-                headers: IMAGE_GEN_HEADERS,
-                signal: AbortSignal.timeout(5000), // 5s timeout
-              });
-              if (awaitResp.ok) {
-                const awaitData = await awaitResp.json();
-                const token = awaitData?.imageToken || (awaitData?.images?.[0]) || awaitData?.token;
                 if (token) {
                   const downloadUrl = `${IMAGE_GEN_BASE}/api/downloadTemporaryImageViaProxy?t=${encodeURIComponent(token)}`;
                   const imgResp = await fetch(downloadUrl, {
