@@ -579,6 +579,8 @@ export default {
           );
         }
 
+        const genDebug = [];
+
         // Step 2: Visit embed page first to establish session/cookies
         let sessionCookies = "";
         try {
