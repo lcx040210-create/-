@@ -479,9 +479,14 @@ export default {
         let adAccessCode;
         try {
           const adResp = await fetch(`${PERCHANCE_MAIN}/api/getAccessCodeForAdPoweredStuff?__cacheBust=${Math.random()}`, { headers: BROWSER_HEADERS });
-          const adData = await adResp.json();
-          adAccessCode = typeof adData === "string" ? adData : (adData.adAccessCode || adData.code);
-          if (!adAccessCode) throw new Error("No adAccessCode in response: " + JSON.stringify(adData).slice(0, 200));
+          const adText = await adResp.text();
+          try {
+            const adJson = JSON.parse(adText);
+            adAccessCode = adJson.adAccessCode || adJson.code || adJson;
+          } catch {
+            adAccessCode = adText.trim(); // plain string response
+          }
+          if (!adAccessCode) throw new Error("No adAccessCode in response: " + adText.slice(0, 200));
         } catch (err) {
           return Response.json(
             { success: false, images: [], error: "获取广告授权码失败: " + err.message },
