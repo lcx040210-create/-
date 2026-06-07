@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="dashboard.css">
+  <title>X Broadcaster — Dashboard</title>
+</head>
+<body>
+  <nav class="tabs">
+    <button class="tab active" data-tab="config">⚙ Config</button>
+    <button class="tab" data-tab="candidates">👥 Candidates</button>
+    <button class="tab" data-tab="monitor">📊 Monitor</button>
+    <button class="tab" data-tab="blacklist">🚫 Blacklist</button>
+  </nav>
+
+  <main id="main">
+
+    <!-- Config Tab -->
+    <section id="tab-config" class="tab-content active">
+      <h2>Task Configuration</h2>
+
+      <div class="form-group">
+        <label>Search Keywords (comma-separated)</label>
+        <input type="text" id="cfgKeywords" placeholder="AI tools, startup, SaaS">
+      </div>
+
+      <hr>
+      <h3>Stage 1 Filters</h3>
+
+      <div class="form-row">
+        <label class="checkbox-label"><input type="checkbox" id="cfgRequireAvatar" checked> Require avatar</label>
+        <label class="checkbox-label"><input type="checkbox" id="cfgRequireBio" checked> Require bio</label>
+      </div>
+      <div class="form-group">
+        <label>Min Account Age (years)</label>
+        <input type="number" id="cfgMinAccountAge" value="0" min="0" max="15">
+      </div>
+
+      <hr>
+      <h3>Stage 2 Filters</h3>
+
+      <div class="form-group"><label>Min Followers</label><input type="number" id="cfgMinFollowers" value="100" min="0"></div>
+      <div class="form-group"><label>Max Following/Follower Ratio</label><input type="number" id="cfgMaxFollowRatio" value="3.0" step="0.1" min="0"></div>
+      <div class="form-group"><label>Topic Keywords (comma-separated)</label><input type="text" id="cfgTopicKeywords" placeholder="AI, cryptocurrency, startup"></div>
+      <label class="checkbox-label"><input type="checkbox" id="cfgRequireDmsOpen" checked> Require DMs open</label>
+
+      <hr>
+      <h3>Messages</h3>
+
+      <div class="form-group"><label>Message Templates (one per line, use {username}, {topic}, {link}, {followers})</label><textarea id="cfgMessageTemplates" rows="4">Hi {username}! Saw your posts on {topic}. Check this: {link}</textarea></div>
+      <div class="form-group"><label>Link to include</label><input type="text" id="cfgLink" placeholder="https://..."></div>
+      <label class="checkbox-label"><input type="checkbox" id="cfgFollowIfNeeded" checked> Follow if DM requires it</label>
+      <br>
+      <label class="checkbox-label"><input type="checkbox" id="cfgEnableComments"> Enable comment mode</label>
+      <div class="form-group"><label>Comment Post URLs (one per line)</label><textarea id="cfgCommentPostUrls" rows="2" placeholder="https://x.com/user/status/123"></textarea></div>
+
+      <hr>
+      <h3>Scheduling</h3>
+
+      <div class="form-row two-col">
+        <div class="form-group"><label>DM Interval Min (s)</label><input type="number" id="cfgIntervalMin" value="30" min="10"></div>
+        <div class="form-group"><label>DM Interval Max (s)</label><input type="number" id="cfgIntervalMax" value="60" min="10"></div>
+      </div>
+      <div class="form-row two-col">
+        <div class="form-group"><label>Comment Interval Min (s)</label><input type="number" id="cfgCommentIntervalMin" value="60" min="10"></div>
+        <div class="form-group"><label>Comment Interval Max (s)</label><input type="number" id="cfgCommentIntervalMax" value="120" min="10"></div>
+      </div>
+      <div class="form-group"><label>Daily Send Limit</label><input type="number" id="cfgDailyLimit" value="200" min="0"></div>
+      <div class="form-row two-col">
+        <div class="form-group"><label>Active Hours Start</label><input type="number" id="cfgActiveStart" value="9" min="0" max="23"></div>
+        <div class="form-group"><label>Active Hours End</label><input type="number" id="cfgActiveEnd" value="23" min="0" max="23"></div>
+      </div>
+
+      <button id="btnSaveConfig" class="btn primary">💾 Save Configuration</button>
+      <span id="saveStatus"></span>
+    </section>
+
+    <!-- Candidates Tab -->
+    <section id="tab-candidates" class="tab-content">
+      <h2>Candidate List</h2>
+      <div class="toolbar">
+        <span id="candidateCount">0 candidates</span>
+        <button id="btnClearCandidates" class="btn small danger">Clear All</button>
+      </div>
+      <div id="candidateList" class="list"></div>
+    </section>
+
+    <!-- Monitor Tab -->
+    <section id="tab-monitor" class="tab-content">
+      <h2>Execution Monitor</h2>
+      <div class="status-bar"><span id="monitorStatus" class="badge idle">Idle</span></div>
+      <div class="progress-bar-container"><div id="progressBar" class="progress-bar" style="width:0%"></div></div>
+      <div class="stats-grid">
+        <div class="stat-card"><span class="stat-number" id="monitorDone">0</span><span class="stat-label">Done</span></div>
+        <div class="stat-card"><span class="stat-number" id="monitorFailed">0</span><span class="stat-label">Failed</span></div>
+        <div class="stat-card"><span class="stat-number" id="monitorSkipped">0</span><span class="stat-label">Skipped</span></div>
+        <div class="stat-card"><span class="stat-number" id="monitorTotal">0</span><span class="stat-label">Total</span></div>
+      </div>
+      <div id="currentActionDetail" class="current-action-detail"></div>
+    </section>
+
+    <!-- Blacklist Tab -->
+    <section id="tab-blacklist" class="tab-content">
+      <h2>Blacklist</h2>
+      <div class="toolbar">
+        <span id="blacklistCount">0 entries</span>
+        <input type="text" id="blacklistAddInput" placeholder="@handle to add">
+        <button id="btnBlacklistAdd" class="btn small">Add</button>
+        <button id="btnBlacklistClear" class="btn small danger">Clear All</button>
+      </div>
+      <div id="blacklistEntries" class="list"></div>
+    </section>
+
+  </main>
+  <script src="dashboard.js"></script>
+</body>
+</html>

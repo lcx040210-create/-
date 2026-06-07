@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup">
+    <header>
+      <h1>X Broadcaster</h1>
+      <span id="statusBadge" class="badge idle">Idle</span>
+    </header>
+
+    <section class="stats">
+      <div class="stat-row">
+        <span class="stat-label">Today</span>
+        <span id="sentToday" class="stat-value">0</span>
+        <span class="stat-sep">/</span>
+        <span id="dailyLimit" class="stat-value">200</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Queue</span>
+        <span id="queueRemaining" class="stat-value">—</span>
+      </div>
+      <div id="currentAction" class="current-action hidden">
+        <span class="spinner"></span>
+        <span id="actionText"></span>
+      </div>
+    </section>
+
+    <section class="controls">
+      <button id="btnStart" class="btn primary">▶ Start</button>
+      <button id="btnPause" class="btn secondary" disabled>⏸ Pause</button>
+      <button id="btnStop" class="btn danger" disabled>⏹ Stop</button>
+    </section>
+
+    <footer>
+      <a href="#" id="openDashboard">Open Dashboard →</a>
+    </footer>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
