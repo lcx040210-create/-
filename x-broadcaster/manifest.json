@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "X Broadcaster",
+  "version": "0.1.0",
+  "description": "Search, filter, and message X users at scale",
+  "permissions": ["storage", "activeTab", "tabs", "scripting"],
+  "host_permissions": ["https://x.com/*", "https://twitter.com/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "X Broadcaster"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://x.com/search*", "https://twitter.com/search*"],
+      "js": ["content/search.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://x.com/*", "https://twitter.com/*"],
+      "js": ["content/profile.js", "content/messenger.js"],
+      "run_at": "document_idle",
+      "exclude_matches": ["https://x.com/search*", "https://twitter.com/search*"]
+    }
+  ]
+}
