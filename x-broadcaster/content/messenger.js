@@ -76,8 +76,12 @@
     opts = opts || {};
     var onProgress = opts.onProgress;
 
-    // Must already be on messages page (service worker navigated us here)
-    if (window.location.href.indexOf('/messages') === -1) {
+    // X redirects /messages to /i/chat — accept either
+    var isMessagesPage =
+      window.location.href.indexOf('/messages') !== -1 ||
+      window.location.href.indexOf('/i/chat') !== -1;
+
+    if (!isMessagesPage) {
       console.log('[messenger] Not on messages page, current URL:', window.location.href);
       return { error: 'not_on_messages_page' };
     }

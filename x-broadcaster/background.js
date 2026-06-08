@@ -382,12 +382,12 @@ async function executeSendPhase() {
       .replace('{link}', config.link || '');
 
     try {
-      var tabs = await chrome.tabs.query({ url: 'https://x.com/messages*' });
+      // X redirects /messages to /i/chat; query both URL patterns
+      var tabs = await chrome.tabs.query({ url: ['https://x.com/messages*', 'https://x.com/i/chat*'] });
       var tab;
       if (tabs.length > 0) {
         tab = tabs[0];
-        // Activate the tab so X fully loads the DM UI
-        await chrome.tabs.update(tab.id, { active: true });
+        await chrome.tabs.update(tab.id, { active: true, url: 'https://x.com/messages' });
       } else {
         tab = await chrome.tabs.create({
           url: 'https://x.com/messages',
