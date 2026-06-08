@@ -1,19 +1,13 @@
 /**
  * Content script for executing DM and comment actions on X.
  *
- * DM flow:
- *  1. Navigate to /messages
- *  2. Click "New message"
- *  3. Type recipient handle in search box
- *  4. Select the user from results
- *  5. Type message character-by-character (human-like)
- *  6. Click send
+ * IMPORTANT: This script assumes the service worker has ALREADY opened the
+ * correct page (messages page for DMs, post page for comments).
+ * It does NOT navigate — navigation kills the content script and drops
+ * the message channel.
  *
- * Comment flow:
- *  1. Navigate to target post URL
- *  2. Scroll to reply area
- *  3. Type comment character-by-character
- *  4. Click submit
+ * DM flow: Open composer → type handle → select user → type message → send
+ * Comment flow: Scroll to reply → type comment → submit
  */
 
 (function () {
@@ -81,13 +75,10 @@
   async function sendDM(handle, messageText, opts) {
     opts = opts || {};
     var onProgress = opts.onProgress;
-    var followIfNeeded = opts.followIfNeeded;
 
-    onProgress && onProgress('navigating');
-
+    // Must already be on messages page (service worker navigated us here)
     if (window.location.href.indexOf('/messages') === -1) {
-      window.location.href = 'https://x.com/messages';
-      await sleep(3000);
+      return { error: 'not_on_messages_page' };
     }
 
     onProgress && onProgress('opening_composer');
@@ -119,37 +110,31 @@
       await sleep(500 + Math.random() * 500);
     }
 
-    // Check if follow is required
-    var bodyText = document.body.textContent;
-    var followWarning =
-      bodyText.indexOf('follow you') !== -1 ||
-      bodyText.indexOf('follow') !== -1;
-
-    if (followWarning && followIfNeeded) {
-      onProgress && onProgress('following_then_dm');
-      window.location.href = 'https://x.com/' + handle;
-      await sleep(2000);
-      var followBtn = document.querySelector(
-        '[data-testid="followButton"], [aria-label*="Follow"]'
-      );
-      if (followBtn) {
-        followBtn.click();
-        await sleep(2000);
-      }
-      window.location.href = 'https://x.com/messages';
-      await sleep(3000);
-      return { error: 'follow_required_retry', handle: handle };
-    }
-
-    if (followWarning) {
-      return { error: 'follow_required', handle: handle };
-    }
-
+    // Check message input exists (proves DM is possible)
     onProgress && onProgress('typing_message');
     var msgInput = await waitForElement(
       '[data-testid="dmComposerTextInput"]'
     );
-    if (!msgInput) return { error: 'message_input_not_found' };
+    if (!msgInput) {
+      // Check for specific follow-required indicators
+      var bodyText = document.body.textContent;
+      if (
+        bodyText.indexOf('follow') !== -1 &&
+        (bodyText.indexOf('message') !== -1 ||
+         bodyText.indexOf('send') !== -1)
+      ) {
+        return { error: 'follow_required', handle: handle };
+      }
+      // Check for accounts that don't accept DMs
+      if (
+        bodyText.indexOf('This account cannot receive messages') !== -1 ||
+        bodyText.indexOf('doesn\'t follow you') !== -1
+      ) {
+        return { error: 'dms_closed', handle: handle };
+      }
+      return { error: 'message_input_not_found' };
+    }
+
     await typeHumanLike(msgInput, messageText);
     await sleep(500 + Math.random() * 500);
 
@@ -171,11 +156,9 @@
     opts = opts || {};
     var onProgress = opts.onProgress;
 
-    onProgress && onProgress('navigating');
-
-    if (window.location.href !== postUrl) {
-      window.location.href = postUrl;
-      await sleep(3000);
+    // Must already be on the target post page
+    if (window.location.href.indexOf('/status/') === -1) {
+      return { error: 'not_on_post_page' };
     }
 
     onProgress && onProgress('typing');
@@ -208,14 +191,16 @@
       sendDM(message.handle, message.messageText, {
         followIfNeeded: message.followIfNeeded || false,
         onProgress: function (step) {
-          chrome.runtime.sendMessage({
-            action: 'messenger:progress',
-            step: step,
-            handle: message.handle,
-          });
+          try {
+            chrome.runtime.sendMessage({
+              action: 'messenger:progress',
+              step: step,
+              handle: message.handle,
+            });
+          } catch (e) { /* ignore if disconnected */ }
         },
       }).then(function (result) {
-        sendResponse(result);
+        try { sendResponse(result); } catch (e) { /* ignore */ }
       });
       return true;
     }
@@ -223,13 +208,15 @@
     if (message.action === 'messenger:postComment') {
       postComment(message.postUrl, message.commentText, {
         onProgress: function (step) {
-          chrome.runtime.sendMessage({
-            action: 'messenger:progress',
-            step: step,
-          });
+          try {
+            chrome.runtime.sendMessage({
+              action: 'messenger:progress',
+              step: step,
+            });
+          } catch (e) { /* ignore */ }
         },
       }).then(function (result) {
-        sendResponse(result);
+        try { sendResponse(result); } catch (e) { /* ignore */ }
       });
       return true;
     }

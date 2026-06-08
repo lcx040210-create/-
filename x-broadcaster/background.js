@@ -117,13 +117,14 @@ function updateProgress(update) {
 
 // ── Tab messaging helpers ──
 
-async function sendToTab(tabId, action, payload) {
+async function sendToTab(tabId, action, payload, timeoutMs) {
+  timeoutMs = timeoutMs || 10000;
   return new Promise(function (resolve, reject) {
     var timedOut = false;
     var timer = setTimeout(function () {
       timedOut = true;
       reject(new Error('sendToTab timeout: ' + action));
-    }, 10000);
+    }, timeoutMs);
 
     chrome.tabs.sendMessage(tabId, { action: action, ...payload }, function (response) {
       clearTimeout(timer);
@@ -147,6 +148,7 @@ async function executeSearchPhase() {
   var keyword = config.keywords[0];
   if (!keyword) {
     currentState.status = 'error';
+    await saveState();
     return { error: 'no_keyword' };
   }
 
@@ -164,13 +166,15 @@ async function executeSearchPhase() {
     tab = await chrome.tabs.create({ url: searchUrl, active: true });
   }
 
-  await new Promise(function (r) { setTimeout(r, 3000); });
+  await new Promise(function (r) { setTimeout(r, 4000); });
 
+  // Use longer timeout for search — it scrolls and can take 30-60s
   var response = await sendToTab(tab.id, 'search:start', {
     keyword: keyword,
     maxResults: config.maxResults || 100,
     filterRules: config.filterRules,
-  });
+  }, 90000);
+  // 90-second timeout for search (vs default 10s)
 
   if (response && response.status === 'done') {
     currentState.progress.total = response.total;
@@ -192,7 +196,11 @@ async function executeFilterPhase() {
 
   var config = (await getJSON(KEYS.TASK_CONFIG)) || DEFAULT_CONFIG;
   var candidates = await getJSON(KEYS.CANDIDATE_QUEUE);
-  if (!candidates || candidates.length === 0) return { error: 'no_candidates' };
+  if (!candidates || candidates.length === 0) {
+    currentState.status = 'idle';
+    await saveState();
+    return { error: 'no_candidates' };
+  }
 
   var sendQueue = [];
   var rules = config.filterRules || {};
@@ -374,7 +382,9 @@ async function executeSendPhase() {
     await new Promise(function (r) { setTimeout(r, interval); });
   }
 
-  if (currentState.progress.done >= currentState.progress.total) {
+  // Check if we finished all items naturally (loop completed without break)
+  if (i >= sendQueue.length) {
+    updateProgress({ done: sendQueue.length });
     currentState.status = 'idle';
   }
   await saveState();
