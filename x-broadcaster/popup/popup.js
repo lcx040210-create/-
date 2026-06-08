@@ -3,12 +3,14 @@ var $ = function (sel) { return document.querySelector(sel); };
 var btnStart = $('#btnStart');
 var btnPause = $('#btnPause');
 var btnStop = $('#btnStop');
+var btnDirectStart = $('#btnDirectStart');
+var btnDirectStop = $('#btnDirectStop');
 var statusBadge = $('#statusBadge');
 var sentToday = $('#sentToday');
 var dailyLimit = $('#dailyLimit');
-var queueRemaining = $('#queueRemaining');
 var currentAction = $('#currentAction');
 var actionText = $('#actionText');
+var directHandles = $('#directHandles');
 
 function setButtons(start, pause, stop) {
   btnStart.disabled = !start;
@@ -56,12 +58,40 @@ async function refresh() {
     sentToday.textContent = today;
     dailyLimit.textContent = config.dailyLimit || 200;
   });
-
-  chrome.storage.local.get(['sendQueue'], function (r) {
-    var queue = r.sendQueue ? JSON.parse(r.sendQueue) : [];
-    queueRemaining.textContent = queue.length;
-  });
 }
+
+// ── Direct Send ──
+
+btnDirectStart.addEventListener('click', function () {
+  var text = directHandles.value.trim();
+  if (!text) return;
+
+  // Parse handles: support @handle, handle, comma-separated, newline-separated
+  var handles = text
+    .split(/[\n,]+/)
+    .map(function (s) { return s.trim().replace(/^@/, ''); })
+    .filter(Boolean);
+
+  if (handles.length === 0) return;
+
+  chrome.runtime.sendMessage({
+    action: 'task:directSend',
+    handles: handles,
+  }, function (response) {
+    if (chrome.runtime.lastError) return;
+    console.log('[popup] Direct send queued:', response);
+  });
+
+  directHandles.value = '';
+  refresh();
+});
+
+btnDirectStop.addEventListener('click', function () {
+  chrome.runtime.sendMessage({ action: 'task:stop' });
+  refresh();
+});
+
+// ── Search-based ──
 
 btnStart.addEventListener('click', function () {
   chrome.runtime.sendMessage({ action: 'task:start' });

@@ -197,6 +197,7 @@
       if (cells.length === 0) cells = findUserCellsV2();
       if (cells.length === 0) cells = findUserCellsV3();
 
+      var extractedThisRound = 0;
       for (var i = 0; i < cells.length; i++) {
         if (stopRequested || candidates.length >= maxResults) break;
 
@@ -207,11 +208,12 @@
         if (!quickFilter(user, filterRules)) continue;
 
         candidates.push(user);
+        extractedThisRound++;
+      }
 
-        // Save every 10 users
-        if (candidates.length % 10 === 0) {
-          saveResults(candidates.splice(0, candidates.length));
-        }
+      // Save every 10 users
+      if (candidates.length > 0 && candidates.length % 10 === 0) {
+        saveResults(candidates.splice(0, candidates.length));
       }
 
       var currentCount = cells.length;
@@ -221,6 +223,12 @@
       } else {
         noNewResultsStreak = 0;
         lastCount = currentCount;
+      }
+
+      // Safety: if we've seen 50+ cells but extracted 0 candidates, DOM is wrong
+      if (seen.size >= 30 && extractedThisRound === 0 && candidates.length === 0) {
+        log('WARNING: Found ' + seen.size + ' cells but 0 valid users — DOM mismatch, stopping');
+        break;
       }
     }
 

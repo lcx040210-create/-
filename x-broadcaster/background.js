@@ -524,6 +524,44 @@ chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
       sendResponse(currentState);
       return true;
 
+    case 'task:directSend':
+      (async function () {
+        var handles = message.handles || [];
+        if (!handles.length) {
+          sendResponse({ error: 'no_handles' });
+          return;
+        }
+
+        var config = (await getJSON(KEYS.TASK_CONFIG)) || DEFAULT_CONFIG;
+
+        // Create simple send queue from handles
+        var sendQueue = handles.map(function (h) {
+          return { handle: h, displayName: '', bio: '', followers: 0, following: 0, postTopics: [], dmsOpen: true, profileUrl: 'https://x.com/' + h };
+        });
+
+        // Reset state
+        currentState.status = 'sending';
+        currentState.progress = { done: 0, total: sendQueue.length, failed: 0, skipped: 0 };
+        currentState.errorMessage = null;
+
+        await setJSON(KEYS.SEND_QUEUE, sendQueue);
+        await saveState();
+
+        console.log('[bg] Direct send: queued ' + sendQueue.length + ' handles, starting send phase');
+        sendResponse({ status: 'started', count: sendQueue.length });
+
+        // Run the send phase directly
+        try {
+          await executeSendPhase();
+        } catch (e) {
+          console.error('[bg] Direct send phase error:', e);
+          currentState.status = 'error';
+          currentState.errorMessage = 'Direct send failed: ' + (e.message || e);
+          await saveState();
+        }
+      })();
+      return true;
+
     case 'messenger:progress':
       console.log(
         '[bg] Messenger progress: ' + message.step + ' for ' + message.handle
