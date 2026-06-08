@@ -26,19 +26,49 @@ function sendDMviaAPI(handle, messageText, ct0) {
         ct0 = match ? match[1] : '';
       }
 
-      // Try multiple DM API endpoints
+      // Try multiple DM API endpoints with different formats
       var endpoints = [
+        // JSON format (modern endpoint)
         {
           url: 'https://x.com/i/api/1.1/dm/new2.json',
-          body: 'text=' + encodeURIComponent(messageText) + '&participants=' + encodeURIComponent(JSON.stringify([{ screen_name: handle }]))
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Csrf-Token': ct0,
+            'Authorization': 'Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA',
+            'X-Twitter-Active-User': 'yes',
+            'X-Twitter-Auth-Type': 'OAuth2Session',
+          },
+          body: JSON.stringify({
+            text: messageText,
+            participant_screen_names: [handle],
+          })
         },
+        // Form-encoded (legacy)
         {
           url: 'https://x.com/i/api/1.1/dm/new.json',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-Csrf-Token': ct0,
+            'Authorization': 'Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA',
+            'X-Twitter-Active-User': 'yes',
+            'X-Twitter-Auth-Type': 'OAuth2Session',
+          },
           body: 'text=' + encodeURIComponent(messageText) + '&screen_name=' + encodeURIComponent(handle)
         },
+        // JSON with recipients
         {
-          url: 'https://api.x.com/1.1/direct_messages/new.json',
-          body: 'text=' + encodeURIComponent(messageText) + '&screen_name=' + handle
+          url: 'https://x.com/i/api/1.1/dm/new2.json',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Csrf-Token': ct0,
+            'Authorization': 'Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA',
+            'X-Twitter-Active-User': 'yes',
+            'X-Twitter-Auth-Type': 'OAuth2Session',
+          },
+          body: JSON.stringify({
+            text: messageText,
+            conversation: { participant_screen_names: [handle] },
+          })
         },
       ];
 
@@ -46,21 +76,16 @@ function sendDMviaAPI(handle, messageText, ct0) {
       var results = [];
       for (var i = 0; i < endpoints.length; i++) {
         try {
-          var resp = await fetch(endpoints[i].url, {
+          var e = endpoints[i];
+          var resp = await fetch(e.url, {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded',
-              'X-Csrf-Token': ct0,
-              'X-Twitter-Auth-Type': 'OAuth2Session',
-              'X-Twitter-Active-User': 'yes',
-              'Authorization': 'Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA',
-            },
-            body: endpoints[i].body,
+            headers: e.headers,
+            body: e.body,
             credentials: 'include',
           });
 
           var text = await resp.text();
-          results.push({ url: endpoints[i].url, status: resp.status, body: text.substring(0, 200) });
+          results.push({ url: e.url.split('/').pop(), status: resp.status, body: text.substring(0, 200) });
 
           if (resp.ok) {
             try {
@@ -73,7 +98,7 @@ function sendDMviaAPI(handle, messageText, ct0) {
             }
           }
         } catch(e) {
-          results.push({ url: endpoints[i].url, error: e.message });
+          results.push({ url: 'fetch_error', error: e.message });
         }
       }
 
