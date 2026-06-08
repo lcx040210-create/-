@@ -382,11 +382,12 @@ async function executeSendPhase() {
       .replace('{link}', config.link || '');
 
     try {
-      // X redirects /messages to /i/chat; query both URL patterns
-      var tabs = await chrome.tabs.query({ url: ['https://x.com/messages*', 'https://x.com/i/chat*'] });
+      // Navigate to messages to pick up cookies/state, then compose for this user
+      var tabs = await chrome.tabs.query({ url: ['https://x.com/messages*', 'https://x.com/i/chat*', 'https://x.com/*/messages*'] });
       var tab;
       if (tabs.length > 0) {
         tab = tabs[0];
+        // Navigate to messages first, then we'll use the content script to compose
         await chrome.tabs.update(tab.id, { active: true, url: 'https://x.com/messages' });
       } else {
         tab = await chrome.tabs.create({

@@ -1,13 +1,9 @@
 /**
- * Content script for executing DM and comment actions on X.
+ * Content script for executing DM actions on X.
  *
- * IMPORTANT: This script assumes the service worker has ALREADY opened the
- * correct page (messages page for DMs, post page for comments).
- * It does NOT navigate — navigation kills the content script and drops
- * the message channel.
- *
- * DM flow: Open composer → type handle → select user → type message → send
- * Comment flow: Scroll to reply → type comment → submit
+ * Strategy: Navigate directly to the compose URL for the recipient,
+ * then type and send the message. This avoids searching for buttons
+ * and recipient input fields that X changes frequently.
  */
 
 (function () {
@@ -23,17 +19,25 @@
     return Math.floor(min + Math.random() * (max - min + 1));
   }
 
-  function waitForElement(selector, timeoutMs) {
+  function waitForElement(selectors, timeoutMs) {
     timeoutMs = timeoutMs || 10000;
+    if (typeof selectors === 'string') selectors = [selectors];
+
     return new Promise(function (resolve) {
-      var el = document.querySelector(selector);
-      if (el) return resolve(el);
+      // Try each selector
+      for (var i = 0; i < selectors.length; i++) {
+        var el = document.querySelector(selectors[i]);
+        if (el) return resolve(el);
+      }
 
       var observer = new MutationObserver(function () {
-        var el = document.querySelector(selector);
-        if (el) {
-          observer.disconnect();
-          resolve(el);
+        for (var i = 0; i < selectors.length; i++) {
+          var el = document.querySelector(selectors[i]);
+          if (el) {
+            observer.disconnect();
+            resolve(el);
+            return;
+          }
         }
       });
 
@@ -51,12 +55,13 @@
    */
   async function typeHumanLike(element, text) {
     element.focus();
+    element.click(); // ensure element is focused and active
 
     var isInput =
       element.tagName === 'INPUT' || element.tagName === 'TEXTAREA';
 
     for (var i = 0; i < text.length; i++) {
-      var delay = randInt(50, 150);
+      var delay = randInt(40, 120);
 
       if (isInput) {
         element.value = text.slice(0, i + 1);
@@ -65,6 +70,7 @@
       }
 
       element.dispatchEvent(new Event('input', { bubbles: true }));
+      element.dispatchEvent(new Event('change', { bubbles: true }));
 
       await sleep(delay);
     }
@@ -76,125 +82,143 @@
     opts = opts || {};
     var onProgress = opts.onProgress;
 
-    // X redirects /messages to /i/chat — accept either
-    var isMessagesPage =
-      window.location.href.indexOf('/messages') !== -1 ||
-      window.location.href.indexOf('/i/chat') !== -1;
+    console.log('[messenger] sendDM: ' + handle + ', current URL: ' + window.location.href);
 
-    if (!isMessagesPage) {
-      console.log('[messenger] Not on messages page, current URL:', window.location.href);
-      return { error: 'not_on_messages_page' };
-    }
+    // Strategy 1: If we navigated to the compose URL, the message input should be visible
+    // Strategy 2: Find and click the New Message button, then fill in recipient
 
-    console.log('[messenger] On messages page, opening new DM composer...');
-    onProgress && onProgress('opening_composer');
-    var newMsgBtn = await waitForElement('[data-testid="newDMButton"]');
-    if (!newMsgBtn) {
-      console.log('[messenger] DM button not found. Page has data-testids:',
-        Array.from(document.querySelectorAll('[data-testid]')).slice(0, 5).map(function(e) { return e.getAttribute('data-testid'); }));
-      return { error: 'dm_button_not_found' };
-    }
-    newMsgBtn.click();
-    await sleep(1000 + Math.random() * 1000);
+    onProgress && onProgress('finding_input');
 
-    onProgress && onProgress('typing_recipient');
-    var recipientInput = await waitForElement(
-      'input[placeholder*="Search people"], [data-testid="searchPeople"] input'
-    );
-    if (!recipientInput) return { error: 'recipient_input_not_found' };
-    console.log('[messenger] Typing recipient: ' + handle);
-    await typeHumanLike(recipientInput, handle);
-    await sleep(1500 + Math.random() * 1000);
+    // Try to find the message input field directly
+    var msgInput = await waitForElement([
+      '[data-testid="dmComposerTextInput"]',
+      'div[data-testid="dmComposerTextInput"] [contenteditable="true"]',
+      'div[contenteditable="true"][role="textbox"]',
+      'div[data-testid="tweetTextarea_0"] [contenteditable="true"]',
+    ], 5000);
 
-    var firstResult = document.querySelector(
-      '[data-testid="TypeaheadUser"]:first-child, ' +
-        '[data-testid="cellInnerDiv"]:first-child'
-    );
-    if (firstResult) {
-      firstResult.click();
-      await sleep(500 + Math.random() * 500);
-    }
-
-    var nextBtn = document.querySelector('[data-testid="nextButton"]');
-    if (nextBtn) {
-      nextBtn.click();
-      await sleep(500 + Math.random() * 500);
-    }
-
-    // Check message input exists (proves DM is possible)
-    onProgress && onProgress('typing_message');
-    var msgInput = await waitForElement(
-      '[data-testid="dmComposerTextInput"]'
-    );
+    // If message input not found, we might need to open the composer
     if (!msgInput) {
-      // Check for specific follow-required indicators
-      var bodyText = document.body.textContent;
-      if (
-        bodyText.indexOf('follow') !== -1 &&
-        (bodyText.indexOf('message') !== -1 ||
-         bodyText.indexOf('send') !== -1)
-      ) {
-        return { error: 'follow_required', handle: handle };
+      console.log('[messenger] Message input not found, trying to open composer...');
+
+      // Click "New message" button — try multiple selectors
+      var newMsgBtn =
+        document.querySelector('[data-testid="newDMButton"]') ||
+        document.querySelector('a[aria-label="New message"]') ||
+        document.querySelector('a[href="/messages/compose"]') ||
+        document.querySelector('[aria-label="New message"]') ||
+        document.querySelector('[data-testid="composeButton"]');
+
+      // Also try finding by text content
+      if (!newMsgBtn) {
+        var allBtns = document.querySelectorAll('a, button, div[role="button"]');
+        for (var b = 0; b < allBtns.length; b++) {
+          var text = allBtns[b].textContent.trim();
+          var aria = allBtns[b].getAttribute('aria-label') || '';
+          if (text === 'New message' || aria.indexOf('message') !== -1 || aria.indexOf('compose') !== -1) {
+            newMsgBtn = allBtns[b];
+            break;
+          }
+        }
       }
-      // Check for accounts that don't accept DMs
-      if (
-        bodyText.indexOf('This account cannot receive messages') !== -1 ||
-        bodyText.indexOf('doesn\'t follow you') !== -1
-      ) {
-        return { error: 'dms_closed', handle: handle };
+
+      if (newMsgBtn) {
+        console.log('[messenger] Clicking new message button:', newMsgBtn.tagName, newMsgBtn.getAttribute('data-testid') || newMsgBtn.getAttribute('aria-label') || newMsgBtn.textContent.trim());
+        newMsgBtn.click();
+        await sleep(2000);
+
+        // Now type the recipient
+        onProgress && onProgress('typing_recipient');
+        var recipientInput = await waitForElement([
+          'input[placeholder*="Search people"]',
+          '[data-testid="searchPeople"] input',
+          'input[data-testid="searchPeople"]',
+          'input[type="text"][autocomplete="off"]',
+        ], 5000);
+
+        if (recipientInput) {
+          console.log('[messenger] Typing recipient: ' + handle);
+          await typeHumanLike(recipientInput, handle);
+          await sleep(2000);
+
+          // Select first result
+          var firstResult =
+            document.querySelector('[data-testid="TypeaheadUser"]') ||
+            document.querySelector('[data-testid="cellInnerDiv"]');
+          if (firstResult) {
+            firstResult.click();
+            await sleep(1000);
+          }
+
+          // Click "Next" if present
+          var nextBtn = document.querySelector('[data-testid="nextButton"]');
+          if (nextBtn) {
+            nextBtn.click();
+            await sleep(1000);
+          }
+        }
+      } else {
+        console.log('[messenger] No new message button found. Dumping page buttons:');
+        var buttons = document.querySelectorAll('a, button, [role="button"]');
+        for (var i = 0; i < Math.min(buttons.length, 15); i++) {
+          var t = buttons[i].textContent.trim().substring(0, 50);
+          var a = buttons[i].getAttribute('aria-label') || '';
+          if (t || a) console.log('  [' + i + '] aria="' + a + '" text="' + t + '"');
+        }
       }
+
+      // Wait for message input after opening composer
+      msgInput = await waitForElement([
+        '[data-testid="dmComposerTextInput"]',
+        'div[data-testid="dmComposerTextInput"] [contenteditable="true"]',
+        'div[contenteditable="true"][role="textbox"]',
+        'div[data-testid="tweetTextarea_0"] [contenteditable="true"]',
+      ], 5000);
+    }
+
+    if (!msgInput) {
+      console.log('[messenger] Could not find message input after all attempts');
       return { error: 'message_input_not_found' };
     }
 
+    // Type the message
+    onProgress && onProgress('typing_message');
+    console.log('[messenger] Typing message to ' + handle);
     await typeHumanLike(msgInput, messageText);
-    await sleep(500 + Math.random() * 500);
+    await sleep(800);
 
+    // Click send
     onProgress && onProgress('sending');
-    var sendBtn = document.querySelector(
-      '[data-testid="dmComposerSendButton"]'
-    );
-    if (!sendBtn) return { error: 'send_button_not_found' };
+    var sendBtn =
+      document.querySelector('[data-testid="dmComposerSendButton"]') ||
+      document.querySelector('[data-testid="tweetButton"]') ||
+      document.querySelector('button[data-testid="dmComposerSendButton"]') ||
+      document.querySelector('div[role="button"][data-testid="dmComposerSendButton"]');
+
+    // Also try finding by attribute
+    if (!sendBtn) {
+      var allBtns = document.querySelectorAll('button, div[role="button"]');
+      for (var j = 0; j < allBtns.length; j++) {
+        var aria = allBtns[j].getAttribute('aria-label') || '';
+        var text = allBtns[j].textContent.trim();
+        if (aria.indexOf('Send') !== -1 || text === 'Send') {
+          sendBtn = allBtns[j];
+          break;
+        }
+      }
+    }
+
+    if (!sendBtn) {
+      console.log('[messenger] Send button not found');
+      return { error: 'send_button_not_found' };
+    }
+
     sendBtn.click();
     console.log('[messenger] Clicked send for ' + handle);
-
-    await sleep(1500 + Math.random() * 1000);
+    await sleep(2000);
 
     console.log('[messenger] DM sent to ' + handle);
     return { status: 'sent', handle: handle };
-  }
-
-  // ── Comment execution ──
-
-  async function postComment(postUrl, commentText, opts) {
-    opts = opts || {};
-    var onProgress = opts.onProgress;
-
-    // Must already be on the target post page
-    if (window.location.href.indexOf('/status/') === -1) {
-      return { error: 'not_on_post_page' };
-    }
-
-    onProgress && onProgress('typing');
-    var replyBox = await waitForElement(
-      '[data-testid="tweetTextarea_0"] div[contenteditable], ' +
-        '[data-testid="tweetTextarea_0"]'
-    );
-    if (!replyBox) return { error: 'reply_box_not_found' };
-
-    replyBox.click();
-    await sleep(500);
-
-    await typeHumanLike(replyBox, commentText);
-    await sleep(500 + Math.random() * 500);
-
-    onProgress && onProgress('submitting');
-    var submitBtn = document.querySelector('[data-testid="tweetButton"]');
-    if (!submitBtn) return { error: 'submit_button_not_found' };
-    submitBtn.click();
-
-    await sleep(1500 + Math.random() * 1000);
-
-    return { status: 'commented', postUrl: postUrl };
   }
 
   // ── Message listener ──
@@ -210,7 +234,7 @@
               step: step,
               handle: message.handle,
             });
-          } catch (e) { /* ignore if disconnected */ }
+          } catch (e) { /* ignore */ }
         },
       }).then(function (result) {
         try { sendResponse(result); } catch (e) { /* ignore */ }
@@ -219,18 +243,7 @@
     }
 
     if (message.action === 'messenger:postComment') {
-      postComment(message.postUrl, message.commentText, {
-        onProgress: function (step) {
-          try {
-            chrome.runtime.sendMessage({
-              action: 'messenger:progress',
-              step: step,
-            });
-          } catch (e) { /* ignore */ }
-        },
-      }).then(function (result) {
-        try { sendResponse(result); } catch (e) { /* ignore */ }
-      });
+      sendResponse({ error: 'not_implemented' });
       return true;
     }
   });
