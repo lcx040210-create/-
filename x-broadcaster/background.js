@@ -382,25 +382,20 @@ async function executeSendPhase() {
       .replace('{link}', config.link || '');
 
     try {
-      // Navigate to messages to pick up cookies/state, then compose for this user
-      var tabs = await chrome.tabs.query({ url: ['https://x.com/messages*', 'https://x.com/i/chat*', 'https://x.com/*/messages*'] });
-      var tab;
-      if (tabs.length > 0) {
-        tab = tabs[0];
-        // Navigate to messages first, then we'll use the content script to compose
-        await chrome.tabs.update(tab.id, { active: true, url: 'https://x.com/messages' });
-      } else {
+      // Use the CURRENT active tab — user should be on X messages page
+      var activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      var tab = activeTabs[0];
+
+      if (!tab || !tab.url || (tab.url.indexOf('x.com') === -1)) {
+        console.warn('[bg] Active tab is not on X — opening messages tab');
         tab = await chrome.tabs.create({
           url: 'https://x.com/messages',
           active: true,
         });
+        await new Promise(function (r) { setTimeout(r, 5000); });
       }
 
-      // Wait for messages page to fully load
-      console.log('[bg] Waiting for messages page to load (tab ' + tab.id + ')...');
-      await new Promise(function (r) { setTimeout(r, 5000); });
-
-      console.log('[bg] Sending DM to ' + user.handle);
+      console.log('[bg] Sending DM to ' + user.handle + ' via tab ' + tab.id + ' (' + tab.url + ')');
       var result = await sendToTab(tab.id, 'messenger:sendDM', {
         handle: user.handle,
         messageText: messageText,

@@ -97,9 +97,27 @@
       'div[data-testid="tweetTextarea_0"] [contenteditable="true"]',
     ], 5000);
 
-    // If message input not found, we might need to open the composer
+    // If message input not found, try multiple approaches to open composer
     if (!msgInput) {
-      console.log('[messenger] Message input not found, trying to open composer...');
+      console.log('[messenger] Message input not found, trying keyboard shortcut "n"...');
+
+      // Try X keyboard shortcut: 'n' opens new message dialog
+      document.body.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'n', code: 'KeyN', keyCode: 78, which: 78, bubbles: true,
+      }));
+
+      await sleep(1000);
+
+      // Recheck for input
+      msgInput = await waitForElement([
+        '[data-testid="dmComposerTextInput"]',
+        'div[data-testid="dmComposerTextInput"] [contenteditable="true"]',
+        'div[contenteditable="true"][role="textbox"]',
+      ], 3000);
+    }
+
+    if (!msgInput) {
+      console.log('[messenger] Still no input, trying to click buttons...');
 
       // Click "New message" button — try multiple selectors
       var newMsgBtn =
