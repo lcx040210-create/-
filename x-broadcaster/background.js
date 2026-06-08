@@ -77,23 +77,33 @@ function sendOneDM(handle, messageText) {
         return resolve({ error: 'no_search_input', msg: 'Could not find DM search box. Are you on the messages page?' });
       }
 
-      // Type text into an element (compatible with React's value override)
+      // Type text into element (React-compatible via InputEvent)
       function reactType(el, text) {
         el.focus();
-        // For input elements, assign value directly — React's instance-level
-        // value override will intercept this. For contenteditable, use textContent.
+        el.click();
         var isInput = el.tagName === 'INPUT' || el.tagName === 'TEXTAREA';
-        for (var k = 0; k < text.length; k++) {
-          if (isInput) {
-            el.value = text.slice(0, k + 1);  // Goes through React's setter
-          } else {
-            el.textContent = text.slice(0, k + 1);
-            el.innerText = text.slice(0, k + 1);
-          }
-          // Fire events React listens for
-          el.dispatchEvent(new Event('input', { bubbles: true }));
-          el.dispatchEvent(new Event('change', { bubbles: true }));
+
+        // Type all at once with InputEvent (React watches for this specific event type)
+        if (isInput) {
+          el.value = text;
+          el.dispatchEvent(new InputEvent('input', {
+            inputType: 'insertText',
+            data: text,
+            bubbles: true,
+            cancelable: true,
+          }));
+        } else {
+          // For contenteditable, use execCommand which fires beforeinput
+          el.textContent = text;
+          el.innerText = text;
+          el.dispatchEvent(new InputEvent('input', {
+            inputType: 'insertText',
+            data: text,
+            bubbles: true,
+            cancelable: true,
+          }));
         }
+        el.dispatchEvent(new Event('change', { bubbles: true }));
       }
 
       // Step 3: Type handle
