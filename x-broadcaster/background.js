@@ -118,7 +118,23 @@ function updateProgress(update) {
 // ── Tab messaging helpers ──
 
 async function sendToTab(tabId, action, payload) {
-  return chrome.tabs.sendMessage(tabId, { action: action, ...payload });
+  return new Promise(function (resolve, reject) {
+    var timedOut = false;
+    var timer = setTimeout(function () {
+      timedOut = true;
+      reject(new Error('sendToTab timeout: ' + action));
+    }, 10000);
+
+    chrome.tabs.sendMessage(tabId, { action: action, ...payload }, function (response) {
+      clearTimeout(timer);
+      if (timedOut) return;
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message));
+      } else {
+        resolve(response);
+      }
+    });
+  });
 }
 
 // ── Search Phase ──
@@ -185,6 +201,9 @@ async function executeFilterPhase() {
 
   if (!hasDetailedRules) {
     await setJSON(KEYS.SEND_QUEUE, candidates);
+    currentState.progress.total = candidates.length;
+    currentState.status = 'sending';
+    await saveState();
     return { status: 'filtered', count: candidates.length };
   }
 
@@ -197,10 +216,20 @@ async function executeFilterPhase() {
         active: false,
       });
 
-      await new Promise(function (r) { setTimeout(r, 3000); });
+      // Wait longer for profile page content script to load
+      await new Promise(function (r) { setTimeout(r, 5000); });
 
-      var profileData = await sendToTab(profileTab.id, 'profile:extract');
-      await chrome.tabs.remove(profileTab.id);
+      // Retry up to 2 times if content script isn't ready
+      var profileData = null;
+      for (var attempt = 0; attempt < 2; attempt++) {
+        try {
+          profileData = await sendToTab(profileTab.id, 'profile:extract');
+          if (profileData) break;
+        } catch (msgErr) {
+          console.warn('[bg] Profile extract attempt ' + (attempt + 1) + ' failed for ' + candidates[i].handle + ': ' + msgErr.message);
+          if (attempt < 1) await new Promise(function (r) { setTimeout(r, 3000); });
+        }
+      }
 
       if (profileData && !profileData.error) {
         var pass = true;
@@ -228,8 +257,11 @@ async function executeFilterPhase() {
           sendQueue.push(merged);
         }
       }
+
+      chrome.tabs.remove(profileTab.id);
     } catch (err) {
       console.warn('[bg] Filter error for ' + candidates[i].handle + ':', err);
+      try { chrome.tabs.remove(profileTab.id); } catch (e2) { /* ignore */ }
     }
 
     await new Promise(function (r) {
