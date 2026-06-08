@@ -19,6 +19,7 @@ function sendDMviaAPI(handle, messageText, ct0) {
   // This runs inside the X page via executeScript — has full cookie access
   return new Promise(async function(resolve) {
     try {
+      console.log('[injected] Sending DM to ' + handle + ': ' + messageText.substring(0, 30) + '...');
       // Extract CSRF token from cookies if not provided
       if (!ct0) {
         var match = document.cookie.match(/ct0=([a-f0-9]+)/);
@@ -41,6 +42,7 @@ function sendDMviaAPI(handle, messageText, ct0) {
         },
       ];
 
+      var debugInfo = ['DM API Test for @' + handle];
       var results = [];
       for (var i = 0; i < endpoints.length; i++) {
         try {
@@ -63,9 +65,11 @@ function sendDMviaAPI(handle, messageText, ct0) {
           if (resp.ok) {
             try {
               var data = JSON.parse(text);
+              alert('DM SENT to @' + handle + '!\nResponse: ' + text.substring(0, 300));
               return resolve({ status: 'sent', handle: handle, id: data.id || data.id_str });
             } catch(e) {
-              return resolve({ status: 'sent', handle: handle }); // Sent even if response isn't JSON
+              alert('DM SENT to @' + handle + ' (non-JSON response)\n' + text.substring(0, 300));
+              return resolve({ status: 'sent', handle: handle });
             }
           }
         } catch(e) {
@@ -73,7 +77,12 @@ function sendDMviaAPI(handle, messageText, ct0) {
         }
       }
 
-      resolve({ error: 'all_api_failed', details: results });
+      debugInfo.push('ALL FAILED:');
+      for (var j = 0; j < results.length; j++) {
+        debugInfo.push('  [' + results[j].status + '] ' + results[j].url.split('/').pop() + ': ' + (results[j].body || results[j].error || ''));
+      }
+      alert(debugInfo.join('\n'));
+      resolve({ error: 'all_api_failed', details: results, debug: debugInfo.join('\n') });
     } catch(e) {
       resolve({ error: e.message });
     }
