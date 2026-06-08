@@ -41,6 +41,7 @@ function sendDMviaAPI(handle, messageText, ct0) {
         },
       ];
 
+      var results = [];
       for (var i = 0; i < endpoints.length; i++) {
         try {
           var resp = await fetch(endpoints[i].url, {
@@ -50,22 +51,29 @@ function sendDMviaAPI(handle, messageText, ct0) {
               'X-Csrf-Token': ct0,
               'X-Twitter-Auth-Type': 'OAuth2Session',
               'X-Twitter-Active-User': 'yes',
+              'Authorization': 'Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA',
             },
             body: endpoints[i].body,
             credentials: 'include',
           });
 
+          var text = await resp.text();
+          results.push({ url: endpoints[i].url, status: resp.status, body: text.substring(0, 200) });
+
           if (resp.ok) {
-            var data = await resp.json();
-            return resolve({ status: 'sent', handle: handle, id: data.id || data.id_str });
+            try {
+              var data = JSON.parse(text);
+              return resolve({ status: 'sent', handle: handle, id: data.id || data.id_str });
+            } catch(e) {
+              return resolve({ status: 'sent', handle: handle }); // Sent even if response isn't JSON
+            }
           }
-          console.log('API endpoint ' + i + ': HTTP ' + resp.status);
         } catch(e) {
-          console.log('API endpoint ' + i + ' error: ' + e.message);
+          results.push({ url: endpoints[i].url, error: e.message });
         }
       }
 
-      resolve({ error: 'all_api_endpoints_failed' });
+      resolve({ error: 'all_api_failed', details: results });
     } catch(e) {
       resolve({ error: e.message });
     }
@@ -123,11 +131,13 @@ async function executeDirectSend(handles) {
       });
     });
 
-    console.log('[bg] Result:', result);
+    console.log('[bg] Result:', JSON.stringify(result));
     if (result && result.status === 'sent') {
       if (blacklist.indexOf(handle) === -1) { blacklist.push(handle); await s('blacklist', blacklist); }
     } else {
       currentState.progress.failed++;
+      currentState.errorMessage = 'Failed: ' + (result ? (result.error || JSON.stringify(result.details)) : 'no response');
+      await save();
     }
 
     var wait = 15 + Math.random() * 10;
