@@ -38,7 +38,7 @@ var DEFAULT_CONFIG = {
     'Hi {username}! Noticed your posts on {topic}. Check this out: {link}',
   ],
   link: '',
-  interval: { min: 30, max: 60 },
+  interval: { min: 15, max: 30 },
   commentInterval: { min: 60, max: 120 },
   dailyLimit: 200,
   activeHours: { start: 9, end: 23 },
@@ -386,21 +386,25 @@ async function executeSendPhase() {
       var tab;
       if (tabs.length > 0) {
         tab = tabs[0];
-        await chrome.tabs.update(tab.id, { active: false });
+        // Activate the tab so X fully loads the DM UI
+        await chrome.tabs.update(tab.id, { active: true });
       } else {
         tab = await chrome.tabs.create({
           url: 'https://x.com/messages',
-          active: false,
+          active: true,
         });
       }
 
-      await new Promise(function (r) { setTimeout(r, 3000); });
+      // Wait for messages page to fully load
+      console.log('[bg] Waiting for messages page to load (tab ' + tab.id + ')...');
+      await new Promise(function (r) { setTimeout(r, 5000); });
 
+      console.log('[bg] Sending DM to ' + user.handle);
       var result = await sendToTab(tab.id, 'messenger:sendDM', {
         handle: user.handle,
         messageText: messageText,
         followIfNeeded: config.followIfNeeded,
-      });
+      }, 30000); // 30s timeout for DM send
 
       if (result && result.status === 'sent') {
         await incrementTodaysCount();

@@ -78,12 +78,18 @@
 
     // Must already be on messages page (service worker navigated us here)
     if (window.location.href.indexOf('/messages') === -1) {
+      console.log('[messenger] Not on messages page, current URL:', window.location.href);
       return { error: 'not_on_messages_page' };
     }
 
+    console.log('[messenger] On messages page, opening new DM composer...');
     onProgress && onProgress('opening_composer');
     var newMsgBtn = await waitForElement('[data-testid="newDMButton"]');
-    if (!newMsgBtn) return { error: 'dm_button_not_found' };
+    if (!newMsgBtn) {
+      console.log('[messenger] DM button not found. Page has data-testids:',
+        Array.from(document.querySelectorAll('[data-testid]')).slice(0, 5).map(function(e) { return e.getAttribute('data-testid'); }));
+      return { error: 'dm_button_not_found' };
+    }
     newMsgBtn.click();
     await sleep(1000 + Math.random() * 1000);
 
@@ -92,6 +98,7 @@
       'input[placeholder*="Search people"], [data-testid="searchPeople"] input'
     );
     if (!recipientInput) return { error: 'recipient_input_not_found' };
+    console.log('[messenger] Typing recipient: ' + handle);
     await typeHumanLike(recipientInput, handle);
     await sleep(1500 + Math.random() * 1000);
 
@@ -144,9 +151,11 @@
     );
     if (!sendBtn) return { error: 'send_button_not_found' };
     sendBtn.click();
+    console.log('[messenger] Clicked send for ' + handle);
 
     await sleep(1500 + Math.random() * 1000);
 
+    console.log('[messenger] DM sent to ' + handle);
     return { status: 'sent', handle: handle };
   }
 
