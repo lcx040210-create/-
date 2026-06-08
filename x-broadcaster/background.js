@@ -449,6 +449,9 @@ async function runPipeline() {
     await saveState();
   }
 
+  // Skip filtering — go directly from search to send
+  // (Detailed filtering via profile visits is too slow/fragile and not needed by default)
+
   try {
     if (currentState.status === 'idle' || currentState.status === 'searching') {
       try {
@@ -461,17 +464,19 @@ async function runPipeline() {
         return;
       }
     }
+
+    // If status was set to 'filtering' by search, move directly to sending
     if (currentState.status === 'filtering') {
-      try {
-        await executeFilterPhase();
-      } catch (e) {
-        console.error('[bg] Filter phase error:', e);
-        currentState.status = 'error';
-        currentState.errorMessage = 'Filter failed: ' + (e.message || e);
-        await saveState();
-        return;
+      console.log('[bg] Skipping filter, moving candidates to send queue');
+      var candidates = await getJSON(KEYS.CANDIDATE_QUEUE);
+      if (candidates && candidates.length > 0) {
+        await setJSON(KEYS.SEND_QUEUE, candidates);
+        currentState.progress.total = candidates.length;
       }
+      currentState.status = 'sending';
+      await saveState();
     }
+
     if (currentState.status === 'sending') {
       try {
         await executeSendPhase();

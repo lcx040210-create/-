@@ -197,7 +197,14 @@ $('#btnBlacklistClear').addEventListener('click', async function () {
 
 // ── Init ──
 
-loadConfig();
+// Force HTML defaults to 0 until config loads (prevents stale 100 minFollowers)
+$('#cfgMinFollowers').value = 0;
+
+(async function init() {
+  await loadConfig();
+  console.log('[Dashboard] Config loaded and ready');
+})();
+
 setInterval(updateMonitor, 3000);
 
 $$('.tab').forEach(function (tab) {
