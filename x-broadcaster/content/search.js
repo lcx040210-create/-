@@ -159,19 +159,22 @@
   // ── Save intermediate results ──
 
   function saveResults(candidates) {
-    chrome.storage.local.get(['candidateQueue'], function (result) {
-      var queue = [];
-      var raw = result.candidateQueue;
-      if (raw) {
-        queue = typeof raw === 'string' ? JSON.parse(raw) : raw;
-      }
-      var updated = queue.concat(candidates);
-      chrome.storage.local.set(
-        { candidateQueue: JSON.stringify(updated) },
-        function () {
-          log('Saved ' + candidates.length + ' new candidates (total: ' + updated.length + ')');
+    return new Promise(function (resolve) {
+      chrome.storage.local.get(['candidateQueue'], function (result) {
+        var queue = [];
+        var raw = result.candidateQueue;
+        if (raw) {
+          queue = typeof raw === 'string' ? JSON.parse(raw) : raw;
         }
-      );
+        var updated = queue.concat(candidates);
+        chrome.storage.local.set(
+          { candidateQueue: JSON.stringify(updated) },
+          function () {
+            log('Saved ' + candidates.length + ' new candidates (total: ' + updated.length + ')');
+            resolve();
+          }
+        );
+      });
     });
   }
 
@@ -211,9 +214,9 @@
         extractedThisRound++;
       }
 
-      // Save every 10 users
+      // Save every 10 users (await to avoid race condition)
       if (candidates.length > 0 && candidates.length % 10 === 0) {
-        saveResults(candidates.splice(0, candidates.length));
+        await saveResults(candidates.splice(0, candidates.length));
       }
 
       var currentCount = cells.length;
@@ -232,13 +235,13 @@
       }
     }
 
-    // Save remaining
+    // Save remaining (await to ensure complete before response)
     if (candidates.length > 0) {
-      saveResults(candidates);
+      await saveResults(candidates);
     }
 
     running = false;
-    log('Search finished. Total seen: ' + seen.size);
+    log('Search finished. Total seen: ' + seen.size + ', candidates in queue');
     return seen.size;
   }
 
