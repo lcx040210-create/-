@@ -27,13 +27,12 @@ class XClient:
     # GraphQL query IDs (extracted from X's main JS bundle)
     # These may change; the client can auto-fetch fresh ones from the page
     QUERIES = {
-        "UserSearch": "g3LljhbJ0DZgE72Ttz4RIA",
-        "UserByScreenName": "G3KGOmUDzZxEJmafGqQM1g",
-        "Followers": "Xhf09aqpNYqYpk4dIX3tWw",
-        "Following": "LZbK0B7RmBf5fQVfJUBj5Q",
-        "UserTweets": "E3opETH7OI4oJF7eh4rx-g",
-        "CreateMessage": "m5Ntl7Yx6G1eGqD1JGgH0Q",
-        "SendMessage": "B6UxGj4z1K2mN8pQ9rS0tV",
+        # Format: "queryHash/OperationName"
+        "SearchTimeline": "AIdc203rPpK_k_2KWSdm7g/SearchTimeline",
+        "UserByScreenName": "IGgvgiOx4QZndDHuD3x9TQ/UserByScreenName",
+        "Followers": "_orfRBQae57vylFPH0Huhg/Followers",
+        "Following": "F42cDX8PDFxkbjjq6JrM2w/Following",
+        "UserTweets": "36rb3Xj3iJ64Q-9wKDjCcQ/UserTweets",
     }
 
     def __init__(self, cookies_file: str = "cookies.txt"):
@@ -41,6 +40,8 @@ class XClient:
         self.client = httpx.Client(
             timeout=30,
             follow_redirects=True,
+            verify=False,  # Allow self-signed certs (some proxies/VPNs)
+
             headers={
                 "User-Agent": (
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -80,9 +81,10 @@ class XClient:
                 parts = line.split("\t")
                 if len(parts) >= 7:
                     name, value = parts[5], parts[6]
-                    cookies[name] = value
+                    # Strip any stray newlines from cookie values
+                    cookies[name] = value.strip().replace("\n", "").replace("\r", "")
 
-        # Set cookies on the client
+        # Set cookies on the client (use client.cookies for proper encoding)
         for name, value in cookies.items():
             self.client.cookies.set(name, value, domain=".x.com")
 
@@ -95,7 +97,59 @@ class XClient:
 
         print(f"[+] Loaded {len(cookies)} cookies (auth_token present)")
 
+    def _fetch_query_ids(self):
+        """Auto-extract latest GraphQL query IDs from X's homepage JS bundles."""
+        try:
+            resp = self.client.get(f"{self.BASE_URL}/home")
+            # Extract chunk IDs from homepage HTML
+            hash_map = dict(re.findall(r'(\d+):\"([0-9a-f]{7})\"', resp.text))
+            name_map = dict(re.findall(r'(\d+):\"([^\"]+?)\"', resp.text))
+            name_map = {k: v for k, v in name_map.items() if not re.match(r'^[0-9a-f]{7}$', v)}
+
+            # Fetch the main JS bundle
+            for chunk_id, hash_val in list(hash_map.items())[:3]:
+                name = name_map.get(chunk_id, chunk_id)
+                url = f"https://abs.twimg.com/responsive-web/client-web/{name}.{hash_val}a.js"
+                try:
+                    js = self.client.get(url).text
+                    # Find queryId-operationName pairs
+                    pairs = re.findall(
+                        r'queryId:\"([^\"]+)\".*?operationName:\"([^\"]+)\"',
+                        js, re.DOTALL
+                    )
+                    for qid, op in pairs:
+                        if op in ("SearchTimeline", "UserByScreenName", "Followers", "Following"):
+                            self.QUERIES[op] = f"{qid}/{op}"
+                            print(f"[+] Found query: {op} = {qid}")
+                    if pairs:
+                        break
+                except Exception:
+                    continue
+
+            if "SearchTimeline" not in self.QUERIES:
+                # Try alternate pattern
+                for chunk_id, hash_val in list(hash_map.items())[:3]:
+                    name = name_map.get(chunk_id, chunk_id)
+                    url = f"https://abs.twimg.com/responsive-web/client-web/{name}.{hash_val}a.js"
+                    try:
+                        js = self.client.get(url).text
+                        pairs = re.findall(
+                            r'operationName:\"([^\"]+)\".*?queryId:\"([^\"]+)\"',
+                            js, re.DOTALL
+                        )
+                        for op, qid in pairs:
+                            if op in ("SearchTimeline", "UserByScreenName"):
+                                self.QUERIES[op] = f"{qid}/{op}"
+                                print(f"[+] Found query (alt): {op} = {qid}")
+                        if pairs:
+                            break
+                    except Exception:
+                        continue
+        except Exception as e:
+            print(f"[!] Could not auto-fetch query IDs: {e}")
+
     def _init_csrf(self):
+        self._fetch_query_ids()
         """Fetch homepage to get CSRF token."""
         try:
             resp = self.client.get(f"{self.BASE_URL}/home")
@@ -113,20 +167,18 @@ class XClient:
         except Exception as e:
             print(f"[!] Warning: Could not init CSRF: {e}")
 
-    def _graphql(self, operation: str, variables: dict, feature_flags: dict = None):
-        """Execute a GraphQL query against X's internal API."""
-        query_id = self.QUERIES.get(operation)
-        if not query_id:
-            raise ValueError(f"Unknown operation: {operation}")
+    def _api_get(self, path: str, params: dict = None):
+        """Make an API request to X's internal/rest API."""
+        url = f"{self.BASE_URL}{path}" if path.startswith("/") else path
+        resp = self.client.get(url, params=params or {})
+        resp.raise_for_status()
+        return resp.json()
 
-        params = {"variables": json.dumps(variables)}
-        if feature_flags:
-            params["features"] = json.dumps(feature_flags)
-
-        resp = self.client.get(
-            f"{self.API_URL}/graphql/{query_id}/{operation}",
-            params=params,
-        )
+    def _api_post(self, path: str, data: dict = None):
+        """Make a POST request to X's API."""
+        url = f"{self.BASE_URL}{path}" if path.startswith("/") else path
+        resp = self.client.post(url, data=data or {},
+                               headers={"Content-Type": "application/x-www-form-urlencoded"})
         resp.raise_for_status()
         return resp.json()
 
@@ -135,8 +187,23 @@ class XClient:
     def search_users(self, keyword: str, count: int = 50, cursor: str = None):
         """
         Search for users by keyword.
-        Returns: list of user objects + next cursor for pagination.
+        Tries GraphQL first, falls back to REST typeahead API.
         """
+        # Try GraphQL first (richer data)
+        if "SearchTimeline" in self.QUERIES:
+            try:
+                return self._search_users_graphql(keyword, count, cursor)
+            except Exception as e:
+                print(f"  GraphQL search failed ({e}), trying REST...")
+
+        # Fallback to REST typeahead
+        return self._search_users_rest(keyword, count)
+
+    def _search_users_graphql(self, keyword: str, count: int, cursor: str = None):
+        """Search using GraphQL SearchTimeline endpoint."""
+        entry = self.QUERIES["SearchTimeline"]
+        query_id, op_name = entry.split("/", 1)
+
         variables = {
             "rawQuery": keyword,
             "count": min(count, 50),
@@ -146,31 +213,41 @@ class XClient:
         if cursor:
             variables["cursor"] = cursor
 
-        data = self._graphql("UserSearch", variables)
-        result = data.get("data", {}).get("search_by_raw_query", {})
+        params = {"variables": json.dumps(variables)}
+        resp = self.client.get(
+            f"{self.API_URL}/graphql/{query_id}/{op_name}",
+            params=params,
+        )
+        resp.raise_for_status()
+        data = resp.json()
 
-        users = []
-        entries = (
-            result.get("search_timeline", {})
+        instructions = (
+            data.get("data", {})
+            .get("search_by_raw_query", {})
+            .get("search_timeline", {})
             .get("timeline", {})
             .get("instructions", [])
         )
 
-        for instruction in entries:
+        users = []
+        next_cursor = None
+        for instruction in instructions:
             if instruction.get("type") != "TimelineAddEntries":
                 continue
             for entry in instruction.get("entries", []):
+                eid = entry.get("entryId", "")
+                if eid.startswith("cursor-bottom"):
+                    next_cursor = entry.get("content", {}).get("value")
+                    continue
                 content = entry.get("content", {})
                 item = content.get("itemContent", {})
                 user_result = item.get("user_results", {}).get("result", {})
                 if not user_result:
+                    user_result = content.get("userResult", {}).get("result", {})
+                if not user_result or not user_result.get("legacy"):
                     continue
-
-                legacy = user_result.get("legacy", {})
-                if not legacy:
-                    continue
-
-                user = {
+                legacy = user_result["legacy"]
+                users.append({
                     "id": user_result.get("rest_id"),
                     "handle": legacy.get("screen_name"),
                     "name": legacy.get("name"),
@@ -178,21 +255,35 @@ class XClient:
                     "followers": legacy.get("followers_count", 0),
                     "following": legacy.get("friends_count", 0),
                     "tweets": legacy.get("statuses_count", 0),
-                    "avatar": legacy.get("profile_image_url_https", "").replace("_normal", ""),
+                    "avatar": (legacy.get("profile_image_url_https") or "").replace("_normal", ""),
                     "verified": legacy.get("verified", False),
                     "created_at": legacy.get("created_at"),
                     "protected": legacy.get("protected", False),
-                }
-                users.append(user)
-
-        next_cursor = None
-        for instruction in entries:
-            if instruction.get("type") == "TimelineAddEntries":
-                for entry in instruction.get("entries", []):
-                    if entry.get("entryId", "").startswith("cursor-bottom"):
-                        next_cursor = entry.get("content", {}).get("value")
+                })
 
         return users, next_cursor
+
+    def _search_users_rest(self, keyword: str, count: int):
+        """Search using REST typeahead API (fallback)."""
+        params = {"q": keyword, "count": min(count, 50), "src": "search_box"}
+        data = self._api_get("/i/api/1.1/search/typeahead.json", params)
+        users = [
+            {
+                "id": e.get("id_str"),
+                "handle": e.get("screen_name"),
+                "name": e.get("name"),
+                "bio": e.get("description", ""),
+                "followers": e.get("followers_count", 0),
+                "following": e.get("friends_count", 0),
+                "tweets": 0,
+                "avatar": (e.get("profile_image_url_https") or "").replace("_normal", ""),
+                "verified": e.get("verified", False),
+                "created_at": e.get("created_at"),
+                "protected": e.get("protected", False),
+            }
+            for e in data.get("users", [])
+        ]
+        return users, None
 
     def search_users_all(self, keyword: str, max_results: int = 200):
         """Search users with pagination until max_results or exhaustion."""
@@ -246,46 +337,44 @@ class XClient:
 
     def send_dm(self, handle: str, text: str):
         """
-        Send a direct message to a user.
-        Uses the legacy DM API which is more reliable.
+        Send a direct message using X's REST API.
+        Tries both new2.json and new.json endpoints.
         """
-        # Step 1: Create a new conversation
-        resp = self.client.post(
-            f"{self.API_URL}/1.1/dm/new2.json",
-            data={
-                "text": text,
-                "participants": json.dumps([{"screen_name": handle}]),
-            },
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-        )
+        # Try the modern endpoint first
+        try:
+            resp = self.client.post(
+                f"{self.API_URL}/1.1/dm/new2.json",
+                data={
+                    "text": text,
+                    "participants": json.dumps([{"screen_name": handle}]),
+                },
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                return {"status": "sent", "handle": handle, "id": data.get("id")}
+        except Exception:
+            pass
 
-        if resp.status_code == 200:
-            data = resp.json()
-            return {"status": "sent", "handle": handle, "id": data.get("id")}
-
-        # Fallback: try the conversation creation endpoint
-        if resp.status_code in (403, 404):
-            # Try creating via welcome message
-            resp2 = self.client.post(
-                f"{self.API_URL}/1.1/dm/new.json",
+        # Fallback: legacy endpoint
+        try:
+            resp = self.client.post(
+                "https://api.x.com/1.1/direct_messages/new.json",
                 data={
                     "text": text,
                     "screen_name": handle,
                 },
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
             )
-            if resp2.status_code == 200:
+            if resp.status_code == 200:
                 return {"status": "sent", "handle": handle}
-            return {
-                "status": "failed",
-                "handle": handle,
-                "error": f"HTTP {resp.status_code}: {resp2.text[:200]}",
-            }
+        except Exception:
+            pass
 
         return {
             "status": "failed",
             "handle": handle,
-            "error": f"HTTP {resp.status_code}: {resp.text[:200]}",
+            "error": "Could not send DM (endpoints unavailable)",
         }
 
     # ── Rate limit helpers ──────────────────────────────────

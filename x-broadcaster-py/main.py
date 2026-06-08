@@ -91,7 +91,7 @@ def main():
 
     cfg = CONFIG
     if cfg["dry_run"]:
-        print("\n⚠ DRY RUN — no messages will be sent\n")
+        print("\n[!] DRY RUN — no messages will be sent\n")
 
     # ── 1. Authentication ──────────────────────────────────
 
@@ -111,7 +111,7 @@ def main():
                 pass
 
         if not success:
-            print("\n❌ Cannot auto-extract cookies (requires admin on Windows).")
+            print("\n[X] Cannot auto-extract cookies (requires admin on Windows).")
             print()
             print("  Manual method (takes 30 seconds):")
             print("  1. Open Chrome → go to x.com → log in")
@@ -126,10 +126,10 @@ def main():
     try:
         client = XClient(str(cookies_file))
     except (FileNotFoundError, ValueError) as e:
-        print(f"\n❌ {e}")
+        print(f"\n[X] {e}")
         sys.exit(1)
 
-    print("  ✓ Authenticated\n")
+    print("  [OK] Authenticated\n")
 
     # ── 2. Search ──────────────────────────────────────────
 
@@ -137,7 +137,7 @@ def main():
     print(f"[2/5] Searching: '{keyword}'...")
 
     users = client.search_users_all(keyword, max_results=cfg["max_search"])
-    print(f"  ✓ Found {len(users)} users\n")
+    print(f"  [OK] Found {len(users)} users\n")
 
     if not users:
         print("No users found. Try a different keyword.")
@@ -149,7 +149,7 @@ def main():
     print(f"[3/5] Filtering with rules: {json.dumps(rules)}")
 
     filtered = filter_users(users, rules)
-    print(f"  ✓ {len(filtered)} passed ({len(users) - len(filtered)} filtered out)\n")
+    print(f"  [OK] {len(filtered)} passed ({len(users) - len(filtered)} filtered out)\n")
 
     if not filtered:
         print("All users filtered out. Relax your filter criteria.")
@@ -205,12 +205,12 @@ def main():
         result = client.send_dm(handle, msg)
 
         if result["status"] == "sent":
-            print("✓")
+            print("[OK]")
             save_sent_handle(handle)
             sent_handles.add(handle)
             count += 1
         else:
-            print(f"✗ ({result.get('error', 'unknown')})")
+            print(f"[FAIL] ({result.get('error', 'unknown')})")
 
         # Randomized delay
         delay = random.uniform(cfg["dm_interval_min"], cfg["dm_interval_max"])
@@ -218,7 +218,7 @@ def main():
             print(f"      Waiting {delay:.0f}s...")
             time.sleep(delay)
 
-    print(f"\n✓ Done! Sent {count} messages.")
+    print(f"\n[OK] Done! Sent {count} messages.")
 
 
 if __name__ == "__main__":

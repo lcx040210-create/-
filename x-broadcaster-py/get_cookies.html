@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Get X Cookies</title></head>
+<body style="font-family:Arial;max-width:600px;margin:50px auto;padding:20px">
+<h2>X Cookies Extractor</h2>
+<p>This page reads cookies from your current x.com session.</p>
+
+<ol>
+  <li>Open x.com in another tab and log in</li>
+  <li>Come back to this tab and click the button below</li>
+  <li>Copy the output → save as <code>cookies.txt</code> in the x-broadcaster-py folder</li>
+</ol>
+
+<button id="btn" style="padding:12px 24px;font-size:16px;cursor:pointer;background:#1d9bf0;color:white;border:none;border-radius:6px">
+  Open X → Extract Cookies
+</button>
+
+<pre id="output" style="background:#f5f5f5;padding:12px;margin-top:16px;border-radius:4px;min-height:100px;white-space:pre-wrap;word-break:break-all"></pre>
+<button id="copyBtn" style="padding:8px 16px;cursor:pointer;margin-top:8px;display:none">📋 Copy to Clipboard</button>
+<span id="status" style="color:green;margin-left:10px"></span>
+
+<script>
+document.getElementById('btn').addEventListener('click', function() {
+  // Open x.com in a new tab
+  var win = window.open('https://x.com', '_blank');
+
+  // Wait and check
+  setTimeout(function() {
+    try {
+      var cookies = win.document.cookie;
+      if (!cookies || cookies.indexOf('auth_token') === -1) {
+        document.getElementById('output').textContent =
+          'Could not read cookies. Make sure:\n' +
+          '1. You are logged into x.com in the opened tab\n' +
+          '2. Try closing and reopening the x.com tab\n' +
+          'Or use the Chrome extension method instead.';
+        return;
+      }
+
+      var pairs = cookies.split('; ');
+      var result = '# Netscape HTTP Cookie File\n';
+      for (var i = 0; i < pairs.length; i++) {
+        var parts = pairs[i].split('=');
+        var name = parts[0];
+        var value = parts.slice(1).join('=');
+        result += '.x.com\tTRUE\t/\tFALSE\t0\t' + name + '\t' + value + '\n';
+      }
+      document.getElementById('output').textContent = result;
+      document.getElementById('copyBtn').style.display = 'block';
+    } catch(e) {
+      document.getElementById('output').textContent =
+        'Error: ' + e.message + '\n\n' +
+        'Try this instead:\n' +
+        '1. Go to x.com in this browser\n' +
+        '2. Press F12 → Console\n' +
+        '3. Type: document.cookie\n' +
+        '4. Copy the output and save as cookies.txt';
+    }
+  }, 2000);
+});
+
+document.getElementById('copyBtn').addEventListener('click', function() {
+  var text = document.getElementById('output').textContent;
+  navigator.clipboard.writeText(text).then(function() {
+    document.getElementById('status').textContent = 'Copied! Save as cookies.txt';
+  });
+});
+</script>
+</body>
+</html>
