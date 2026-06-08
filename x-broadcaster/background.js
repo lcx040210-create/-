@@ -1,15 +1,11 @@
 /**
- * Service Worker — orchestrator for the X Broadcaster extension.
+ * X Broadcaster — Service Worker (Simplified)
  *
- * Responsibilities:
- *  - Forward task commands from popup/dashboard to content scripts
- *  - Track execution state (idle, searching, filtering, sending, paused)
- *  - Manage the send queue through the pipeline
- *  - Enforce daily caps, intervals, active hours
- *  - Handle resume-after-crash via stored progress
+ * Uses chrome.scripting.executeScript to inject code directly into X pages.
+ * No content script message passing — script runs inline, does its work, returns result.
  */
 
-// ── Storage keys ──
+// ── Storage helpers ──
 
 var KEYS = {
   TASK_CONFIG: 'taskConfig',
@@ -21,43 +17,20 @@ var KEYS = {
   LAST_SEND_DATE: 'lastSendDate',
 };
 
-// ── Default config ──
-
 var DEFAULT_CONFIG = {
   keywords: [],
-  filterRules: {
-    requireAvatar: true,
-    requireBio: true,
-    minAccountAgeYears: 0,
-    minFollowers: 0,
-    maxFollowRatio: 5.0,
-    topicKeywords: [],
-    requireDmsOpen: true,
-  },
-  messageTemplates: [
-    'Hi {username}! Noticed your posts on {topic}. Check this out: {link}',
-  ],
+  messageTemplates: ['Hi {username}! {link}'],
   link: '',
   interval: { min: 15, max: 30 },
-  commentInterval: { min: 60, max: 120 },
   dailyLimit: 200,
   activeHours: { start: 9, end: 23 },
-  followIfNeeded: true,
-  enableComments: false,
-  commentPostUrls: [],
   maxResults: 100,
 };
-
-// ── JSON storage helpers ──
 
 async function getJSON(key) {
   var result = await chrome.storage.local.get([key]);
   if (result[key]) {
-    try {
-      return JSON.parse(result[key]);
-    } catch (e) {
-      return result[key];
-    }
+    try { return JSON.parse(result[key]); } catch (e) { return result[key]; }
   }
   return null;
 }
@@ -68,35 +41,10 @@ async function setJSON(key, value) {
   return chrome.storage.local.set(obj);
 }
 
-function randomInterval(minS, maxS) {
-  var ms = (minS + Math.random() * (maxS - minS)) * 1000;
-  return Math.floor(ms);
-}
-
-// ── Daily counter ──
-
-async function getTodaysCount() {
-  var today = new Date().toISOString().slice(0, 10);
-  var lastDate = await getJSON(KEYS.LAST_SEND_DATE);
-  if (lastDate !== today) {
-    await setJSON(KEYS.SENT_TODAY, 0);
-    await setJSON(KEYS.LAST_SEND_DATE, today);
-    return 0;
-  }
-  var count = await getJSON(KEYS.SENT_TODAY);
-  return count || 0;
-}
-
-async function incrementTodaysCount() {
-  var count = await getTodaysCount();
-  await setJSON(KEYS.SENT_TODAY, count + 1);
-}
-
 // ── Execution state ──
 
 var currentState = {
   status: 'idle',
-  taskId: null,
   progress: { done: 0, total: 0, failed: 0, skipped: 0 },
   currentHandle: null,
   errorMessage: null,
@@ -111,56 +59,274 @@ async function loadState() {
   if (saved) currentState = saved;
 }
 
-function updateProgress(update) {
-  Object.assign(currentState.progress, update);
-  saveState();
+// ── Daily counter ──
+
+async function getTodaysCount() {
+  var today = new Date().toISOString().slice(0, 10);
+  var lastDate = await getJSON(KEYS.LAST_SEND_DATE);
+  if (lastDate !== today) {
+    await setJSON(KEYS.SENT_TODAY, 0);
+    await setJSON(KEYS.LAST_SEND_DATE, today);
+    return 0;
+  }
+  return (await getJSON(KEYS.SENT_TODAY)) || 0;
 }
 
-// ── Tab messaging helpers ──
+async function incrementTodaysCount() {
+  var count = await getTodaysCount();
+  await setJSON(KEYS.SENT_TODAY, count + 1);
+}
 
-async function sendToTab(tabId, action, payload, timeoutMs) {
-  timeoutMs = timeoutMs || 10000;
-  return new Promise(function (resolve, reject) {
-    var timedOut = false;
-    var timer = setTimeout(function () {
-      timedOut = true;
-      reject(new Error('sendToTab timeout: ' + action));
-    }, timeoutMs);
+// ── Script injection helper ──
 
-    chrome.tabs.sendMessage(tabId, { action: action, ...payload }, function (response) {
-      clearTimeout(timer);
-      if (timedOut) return;
-      if (chrome.runtime.lastError) {
-        reject(new Error(chrome.runtime.lastError.message));
-      } else {
-        resolve(response);
-      }
+async function injectAndRun(tabId, funcCode, args) {
+  try {
+    var results = await chrome.scripting.executeScript({
+      target: { tabId: tabId },
+      func: funcCode,
+      args: args || [],
     });
+    return results && results[0] ? results[0].result : null;
+  } catch (e) {
+    console.error('[bg] Script injection failed:', e.message);
+    return { error: e.message };
+  }
+}
+
+// ── Direct Send: inject DM code into active tab ──
+
+function dmSender(handle, messageText) {
+  // This function runs AS INJECTED CODE in the X page context
+  return new Promise(function (resolve) {
+    function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+    function waitFor(selectors, timeoutMs) {
+      timeoutMs = timeoutMs || 10000;
+      if (typeof selectors === 'string') selectors = [selectors];
+      return new Promise(function (resolveEl) {
+        for (var i = 0; i < selectors.length; i++) {
+          var found = document.querySelector(selectors[i]);
+          if (found) return resolveEl(found);
+        }
+        var observer = new MutationObserver(function () {
+          for (var i = 0; i < selectors.length; i++) {
+            var f = document.querySelector(selectors[i]);
+            if (f) { observer.disconnect(); resolveEl(f); return; }
+          }
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+        setTimeout(function () { observer.disconnect(); resolveEl(null); }, timeoutMs);
+      });
+    }
+
+    async function typeText(el, text) {
+      el.focus();
+      for (var i = 0; i < text.length; i++) {
+        el.value = text.slice(0, i + 1);
+        el.textContent = text.slice(0, i + 1);
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        await sleep(40 + Math.random() * 100);
+      }
+    }
+
+    async function doSend() {
+      // 1. Press 'n' to open new message dialog
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', code: 'KeyN', keyCode: 78, bubbles: true }));
+      await sleep(1500);
+
+      // 2. Find search/recipient input
+      var searchInput = await waitFor([
+        'input[placeholder*="Search people"]',
+        '[data-testid="searchPeople"] input',
+        'input[aria-label*="Search"]',
+      ], 5000);
+
+      if (!searchInput) {
+        // Try clicking the new message button
+        var btns = document.querySelectorAll('a, button, [role="button"]');
+        for (var b = 0; b < btns.length; b++) {
+          var aria = (btns[b].getAttribute('aria-label') || '').toLowerCase();
+          if (aria.indexOf('new message') !== -1 || aria.indexOf('compose') !== -1) {
+            btns[b].click(); await sleep(1500); break;
+          }
+        }
+        searchInput = await waitFor([
+          'input[placeholder*="Search people"]',
+          '[data-testid="searchPeople"] input',
+        ], 3000);
+      }
+
+      if (!searchInput) return resolve({ error: 'no_search_input' });
+
+      // 3. Type recipient handle
+      await typeText(searchInput, handle);
+      await sleep(2000);
+
+      // 4. Click first result
+      var firstResult = document.querySelector('[data-testid="TypeaheadUser"]') ||
+                        document.querySelector('[data-testid="cellInnerDiv"]');
+      if (firstResult) { firstResult.click(); await sleep(1000); }
+
+      // 5. Click Next if present
+      var nextBtn = document.querySelector('[data-testid="nextButton"]');
+      if (nextBtn) { nextBtn.click(); await sleep(1000); }
+
+      // 6. Find message input and type
+      var msgInput = await waitFor([
+        '[data-testid="dmComposerTextInput"]',
+        'div[contenteditable="true"][role="textbox"]',
+        'div[data-testid="tweetTextarea_0"] [contenteditable="true"]',
+      ], 5000);
+      if (!msgInput) return resolve({ error: 'no_msg_input' });
+
+      await typeText(msgInput, messageText);
+      await sleep(800);
+
+      // 7. Click send
+      var sendBtn = document.querySelector('[data-testid="dmComposerSendButton"]') ||
+                    document.querySelector('button[aria-label="Send"]') ||
+                    document.querySelector('[data-testid="tweetButton"]');
+      if (!sendBtn) return resolve({ error: 'no_send_btn' });
+      sendBtn.click();
+      await sleep(2000);
+
+      return resolve({ status: 'sent' });
+    }
+
+    doSend().catch(function (e) { resolve({ error: e.message }); });
   });
 }
 
-// ── Search Phase ──
+// ── Direct Send pipeline ──
 
-async function executeSearchPhase() {
-  currentState.status = 'searching';
+async function executeDirectSend(handles) {
+  currentState.status = 'sending';
+  currentState.progress = { done: 0, total: handles.length, failed: 0, skipped: 0 };
+  currentState.errorMessage = null;
   await saveState();
 
   var config = (await getJSON(KEYS.TASK_CONFIG)) || DEFAULT_CONFIG;
-  console.log('[bg] Search phase — loaded config. keywords:', config.keywords, 'full config keys:', Object.keys(config));
-  var keyword = config.keywords && config.keywords[0];
-  if (!keyword) {
-    console.warn('[bg] No keyword found. Config:', JSON.stringify(config).substring(0, 200));
+  var blacklist = (await getJSON(KEYS.BLACKLIST)) || [];
+  var activeTab = (await chrome.tabs.query({ active: true, currentWindow: true }))[0];
+
+  if (!activeTab || activeTab.url.indexOf('x.com') === -1) {
     currentState.status = 'error';
-    currentState.errorMessage = 'No search keyword configured. Go to Dashboard → Config.';
+    currentState.errorMessage = 'Please open X messages page first (x.com/messages)';
     await saveState();
-    return { error: 'no_keyword' };
+    return;
   }
 
-  var searchUrl =
-    'https://x.com/search?q=' +
-    encodeURIComponent(keyword) +
-    '&src=typed_query&f=user';
+  // Ensure we're on the messages page
+  if (activeTab.url.indexOf('/messages') === -1 && activeTab.url.indexOf('/i/chat') === -1) {
+    await chrome.tabs.update(activeTab.id, { url: 'https://x.com/messages' });
+    await new Promise(function (r) { setTimeout(r, 4000); });
+    activeTab = (await chrome.tabs.query({ active: true, currentWindow: true }))[0];
+  }
 
+  for (var i = 0; i < handles.length; i++) {
+    var handle = handles[i];
+
+    if (currentState.status !== 'sending') break;
+
+    var sentToday = await getTodaysCount();
+    if (sentToday >= (config.dailyLimit || 200)) {
+      currentState.status = 'paused'; await saveState(); break;
+    }
+
+    if (blacklist.indexOf(handle) !== -1) {
+      currentState.progress.skipped++; await saveState(); continue;
+    }
+
+    currentState.currentHandle = handle;
+    currentState.progress.done = i;
+    await saveState();
+
+    var variant = config.messageTemplates[Math.floor(Math.random() * config.messageTemplates.length)];
+    var messageText = variant
+      .replace('{username}', handle)
+      .replace('{topic}', config.keywords[0] || '')
+      .replace('{link}', config.link || '');
+
+    console.log('[bg] Sending DM to ' + handle + ': ' + messageText);
+
+    var result = await injectAndRun(activeTab.id, dmSender, [handle, messageText]);
+    console.log('[bg] DM result for ' + handle + ':', result);
+
+    if (result && result.status === 'sent') {
+      await incrementTodaysCount();
+      var bl = (await getJSON(KEYS.BLACKLIST)) || [];
+      if (bl.indexOf(handle) === -1) { bl.push(handle); await setJSON(KEYS.BLACKLIST, bl); }
+    } else {
+      currentState.progress.failed++;
+    }
+
+    var interval = (config.interval.min + Math.random() * (config.interval.max - config.interval.min)) * 1000;
+    await new Promise(function (r) { setTimeout(r, interval); });
+  }
+
+  if (currentState.progress.done >= handles.length - 1) {
+    currentState.status = 'idle';
+  }
+  await saveState();
+}
+
+// ── Search function (injected into search page) ──
+
+function searchAndExtract(keyword, maxResults) {
+  // This runs as injected code in the X search page
+  return new Promise(async function (resolve) {
+    function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+    var candidates = [];
+    var seen = new Set();
+    var noNewStreak = 0;
+    var lastCount = 0;
+
+    while (candidates.length < maxResults && noNewStreak < 3) {
+      window.scrollBy({ top: 300 + Math.floor(Math.random() * 700), behavior: 'smooth' });
+      await sleep(2000);
+
+      // Find user links
+      var links = document.querySelectorAll('a[href^="/"][role="link"]');
+      var newUsers = 0;
+      for (var i = 0; i < links.length; i++) {
+        var href = links[i].getAttribute('href') || '';
+        var parts = href.replace(/^\//, '').split('?')[0].split('/');
+        if (parts.length !== 1 || parts[0].length < 2 || parts[0].length > 25) continue;
+        var handle = parts[0];
+        if (handle === 'i' || handle === 'search' || handle === 'home' || handle === 'explore' || handle === 'notifications' || handle === 'messages') continue;
+        if (seen.has(handle)) continue;
+        seen.add(handle);
+        candidates.push({ handle: handle, profileUrl: 'https://x.com/' + handle, foundAt: new Date().toISOString() });
+        newUsers++;
+        if (candidates.length >= maxResults) break;
+      }
+
+      if (newUsers === 0) noNewStreak++; else { noNewStreak = 0; lastCount = links.length; }
+    }
+
+    return resolve(candidates);
+  });
+}
+
+// ── Search pipeline ──
+
+async function executeSearchAndSend() {
+  currentState.status = 'searching';
+  currentState.errorMessage = null;
+  await saveState();
+
+  var config = (await getJSON(KEYS.TASK_CONFIG)) || DEFAULT_CONFIG;
+  var keyword = config.keywords[0];
+  if (!keyword) {
+    currentState.status = 'error';
+    currentState.errorMessage = 'No keyword configured';
+    await saveState();
+    return;
+  }
+
+  // Open search page
+  var searchUrl = 'https://x.com/search?q=' + encodeURIComponent(keyword) + '&src=typed_query&f=user';
   var tabs = await chrome.tabs.query({ url: 'https://x.com/search*' });
   var tab;
   if (tabs.length > 0) {
@@ -169,416 +335,132 @@ async function executeSearchPhase() {
   } else {
     tab = await chrome.tabs.create({ url: searchUrl, active: true });
   }
-
-  // Wait for page to fully load + content script to initialize
   await new Promise(function (r) { setTimeout(r, 5000); });
 
-  // Use longer timeout for search — it scrolls and can take 30-60s
-  var response;
-  try {
-    response = await sendToTab(tab.id, 'search:start', {
-      keyword: keyword,
-      maxResults: config.maxResults || 100,
-      filterRules: config.filterRules,
-    }, 120000);
-  } catch (searchErr) {
-    console.error('[bg] Search sendToTab failed:', searchErr.message);
+  // Inject search extraction
+  console.log('[bg] Injecting search script...');
+  var result = await injectAndRun(tab.id, searchAndExtract, [keyword, config.maxResults || 100]);
+
+  if (!result || result.error) {
     currentState.status = 'error';
-    currentState.errorMessage = 'Search tab not ready. Is X logged in? ' + searchErr.message;
+    currentState.errorMessage = 'Search failed: ' + (result && result.error ? result.error : 'no result');
     await saveState();
-    return { error: 'search_tab_failed' };
+    return;
   }
 
-  if (!response) {
-    console.error('[bg] Search got null/undefined response from content script');
+  var candidates = result;
+  console.log('[bg] Search found ' + candidates.length + ' users');
+
+  if (candidates.length === 0) {
     currentState.status = 'error';
-    currentState.errorMessage = 'Search returned empty response. Check X page.';
+    currentState.errorMessage = 'No users found. Try a different keyword.';
     await saveState();
-    return { error: 'null_response' };
+    return;
   }
 
-  if (response.status === 'done') {
-    // Log diagnostic info from the search page
-    if (response.diagnostic) {
-      console.log('[bg] Search page diagnostic:', JSON.stringify(response.diagnostic));
-      if (response.diagnostic.loginStatus) {
-        console.error('[bg] User is NOT logged into X!');
-        currentState.status = 'error';
-        currentState.errorMessage = 'Not logged into X. Please log in at x.com first.';
-        await saveState();
-        return { error: 'not_logged_in' };
-      }
-    }
-    if (response.found === 0) {
-      console.warn('[bg] Search found 0 users. Page testIds:', response.diagnostic && response.diagnostic.testIds);
-    }
-    currentState.progress.total = response.total;
-    currentState.status = 'filtering';
-    console.log('[bg] Search done. Found ' + response.found + ' candidates');
-    await saveState();
-  } else if (response.status === 'navigating') {
-    console.log('[bg] Search page still navigating, retrying...');
-    await new Promise(function (r) { setTimeout(r, 5000); });
-    return executeSearchPhase();
-  } else {
-    console.warn('[bg] Search unexpected response:', JSON.stringify(response));
-    currentState.status = 'error';
-    currentState.errorMessage = 'Unexpected search response: ' + (response.error || JSON.stringify(response));
-    await saveState();
-    return { error: 'unexpected_response' };
-  }
-
-  return response;
-}
-
-// ── Filter Phase ──
-
-async function executeFilterPhase() {
-  currentState.status = 'filtering';
+  // Store and transition to sending
+  await setJSON(KEYS.CANDIDATE_QUEUE, candidates);
+  currentState.status = 'sending';
+  currentState.progress = { done: 0, total: candidates.length, failed: 0, skipped: 0 };
   await saveState();
+
+  // Send DMs — use the current active search tab or open messages
+  console.log('[bg] Search done, starting sends...');
 
   var config = (await getJSON(KEYS.TASK_CONFIG)) || DEFAULT_CONFIG;
-  var candidates = await getJSON(KEYS.CANDIDATE_QUEUE);
-  if (!candidates || candidates.length === 0) {
-    currentState.status = 'idle';
-    await saveState();
-    return { error: 'no_candidates' };
-  }
-
-  var sendQueue = [];
-  var rules = config.filterRules || {};
-  var hasDetailedRules =
-    rules.minFollowers || (rules.topicKeywords && rules.topicKeywords.length > 0);
-
-  if (!hasDetailedRules) {
-    await setJSON(KEYS.SEND_QUEUE, candidates);
-    currentState.progress.total = candidates.length;
-    currentState.status = 'sending';
-    await saveState();
-    return { status: 'filtered', count: candidates.length };
-  }
-
-  for (var i = 0; i < candidates.length; i++) {
-    if (currentState.status !== 'filtering') break;
-
-    try {
-      var profileTab = await chrome.tabs.create({
-        url: 'https://x.com/' + candidates[i].handle,
-        active: false,
-      });
-
-      // Wait longer for profile page content script to load
-      await new Promise(function (r) { setTimeout(r, 5000); });
-
-      // Retry up to 2 times if content script isn't ready
-      var profileData = null;
-      for (var attempt = 0; attempt < 2; attempt++) {
-        try {
-          profileData = await sendToTab(profileTab.id, 'profile:extract');
-          if (profileData) break;
-        } catch (msgErr) {
-          console.warn('[bg] Profile extract attempt ' + (attempt + 1) + ' failed for ' + candidates[i].handle + ': ' + msgErr.message);
-          if (attempt < 1) await new Promise(function (r) { setTimeout(r, 3000); });
-        }
-      }
-
-      if (profileData && !profileData.error) {
-        var pass = true;
-        if (rules.minFollowers && profileData.followers < rules.minFollowers) {
-          pass = false;
-        }
-        if (rules.maxFollowRatio && profileData.followers > 0) {
-          var ratio = profileData.following / profileData.followers;
-          if (ratio > rules.maxFollowRatio) pass = false;
-        }
-        if (rules.topicKeywords && rules.topicKeywords.length > 0) {
-          var topics = profileData.postTopics || [];
-          var hasMatch = rules.topicKeywords.some(function (kw) {
-            return topics.some(function (t) {
-              return t.toLowerCase().indexOf(kw.toLowerCase()) !== -1;
-            });
-          });
-          if (!hasMatch) pass = false;
-        }
-        if (rules.requireDmsOpen && !profileData.dmsOpen) pass = false;
-
-        if (pass) {
-          var merged = {};
-          Object.assign(merged, candidates[i], profileData);
-          sendQueue.push(merged);
-        }
-      }
-
-      chrome.tabs.remove(profileTab.id);
-    } catch (err) {
-      console.warn('[bg] Filter error for ' + candidates[i].handle + ':', err);
-      try { chrome.tabs.remove(profileTab.id); } catch (e2) { /* ignore */ }
-    }
-
-    await new Promise(function (r) {
-      setTimeout(r, 2000 + Math.random() * 2000);
-    });
-  }
-
-  await setJSON(KEYS.SEND_QUEUE, sendQueue);
-  currentState.progress.total = sendQueue.length;
-  currentState.status = 'sending';
-  await saveState();
-
-  return { status: 'filtered', count: sendQueue.length };
-}
-
-// ── Send Phase ──
-
-async function executeSendPhase() {
-  currentState.status = 'sending';
-  await saveState();
-
-  var config = (await getJSON(KEYS.TASK_CONFIG)) || DEFAULT_CONFIG;
-  var sendQueue = await getJSON(KEYS.SEND_QUEUE);
   var blacklist = (await getJSON(KEYS.BLACKLIST)) || [];
 
-  if (!sendQueue || sendQueue.length === 0) {
-    currentState.status = 'idle';
-    await saveState();
-    return { status: 'done', message: 'Queue empty' };
-  }
-
-  for (var i = currentState.progress.done; i < sendQueue.length; i++) {
-    var user = sendQueue[i];
+  for (var i = 0; i < candidates.length; i++) {
+    var handle = candidates[i].handle;
 
     if (currentState.status !== 'sending') break;
 
     var sentToday = await getTodaysCount();
     if (sentToday >= (config.dailyLimit || 200)) {
-      currentState.status = 'paused';
-      await saveState();
-      break;
+      currentState.status = 'paused'; await saveState(); break;
     }
 
-    if (blacklist.indexOf(user.handle) !== -1) {
-      updateProgress({ skipped: currentState.progress.skipped + 1 });
-      continue;
+    if (blacklist.indexOf(handle) !== -1) {
+      currentState.progress.skipped++; await saveState(); continue;
     }
 
-    if (config.activeHours) {
-      var hour = new Date().getHours();
-      if (hour < config.activeHours.start || hour > config.activeHours.end) {
-        currentState.status = 'paused';
-        await saveState();
-        break;
-      }
-    }
+    currentState.currentHandle = handle;
+    currentState.progress.done = i;
+    await saveState();
 
-    currentState.currentHandle = user.handle;
-    updateProgress({ done: i });
-
-    var variants = config.messageTemplates;
-    var variant = variants[Math.floor(Math.random() * variants.length)];
+    var variant = config.messageTemplates[Math.floor(Math.random() * config.messageTemplates.length)];
     var messageText = variant
-      .replace('{username}', user.handle)
-      .replace('{followers}', user.followers || '?')
-      .replace('{topic}', config.keywords[0] || '')
+      .replace('{username}', handle)
+      .replace('{topic}', keyword)
       .replace('{link}', config.link || '');
 
-    try {
-      // Use the CURRENT active tab — user should be on X messages page
-      var activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
-      var tab = activeTabs[0];
+    // Navigate to messages
+    var msgTabs = await chrome.tabs.query({ url: ['https://x.com/messages*', 'https://x.com/i/chat*'] });
+    var msgTab;
+    if (msgTabs.length > 0) {
+      msgTab = msgTabs[0];
+      await chrome.tabs.update(msgTab.id, { active: true });
+    } else {
+      msgTab = await chrome.tabs.create({ url: 'https://x.com/messages', active: true });
+    }
+    await new Promise(function (r) { setTimeout(r, 3000); });
 
-      if (!tab || !tab.url || (tab.url.indexOf('x.com') === -1)) {
-        console.warn('[bg] Active tab is not on X — opening messages tab');
-        tab = await chrome.tabs.create({
-          url: 'https://x.com/messages',
-          active: true,
-        });
-        await new Promise(function (r) { setTimeout(r, 5000); });
-      }
+    console.log('[bg] Sending DM ' + (i+1) + '/' + candidates.length + ' to ' + handle);
+    var dmResult = await injectAndRun(msgTab.id, dmSender, [handle, messageText]);
+    console.log('[bg] DM ' + (i+1) + ' result:', dmResult);
 
-      console.log('[bg] Sending DM to ' + user.handle + ' via tab ' + tab.id + ' (' + tab.url + ')');
-      var result = await sendToTab(tab.id, 'messenger:sendDM', {
-        handle: user.handle,
-        messageText: messageText,
-        followIfNeeded: config.followIfNeeded,
-      }, 30000); // 30s timeout for DM send
-
-      if (result && result.status === 'sent') {
-        await incrementTodaysCount();
-        var currentBlacklist = (await getJSON(KEYS.BLACKLIST)) || [];
-        if (currentBlacklist.indexOf(user.handle) === -1) {
-          currentBlacklist.push(user.handle);
-          await setJSON(KEYS.BLACKLIST, currentBlacklist);
-        }
-      } else if (result && result.error) {
-        updateProgress({ failed: currentState.progress.failed + 1 });
-        console.warn('[bg] DM failed for ' + user.handle + ':', result.error);
-      }
-    } catch (err) {
-      updateProgress({ failed: currentState.progress.failed + 1 });
-      console.warn('[bg] DM error for ' + user.handle + ':', err);
+    if (dmResult && dmResult.status === 'sent') {
+      await incrementTodaysCount();
+      if (blacklist.indexOf(handle) === -1) { blacklist.push(handle); await setJSON(KEYS.BLACKLIST, blacklist); }
+    } else {
+      currentState.progress.failed++;
     }
 
-    var interval = randomInterval(
-      config.interval.min,
-      config.interval.max
-    );
+    var interval = (config.interval.min + Math.random() * (config.interval.max - config.interval.min)) * 1000;
     await new Promise(function (r) { setTimeout(r, interval); });
   }
 
-  // Check if we finished all items naturally (loop completed without break)
-  if (i >= sendQueue.length) {
-    updateProgress({ done: sendQueue.length });
+  if (i >= candidates.length) {
     currentState.status = 'idle';
   }
   await saveState();
 }
 
-// ── Main pipeline ──
-
-async function runPipeline() {
-  await loadState();
-
-  if (currentState.status === 'idle') {
-    currentState.progress = { done: 0, total: 0, failed: 0, skipped: 0 };
-    currentState.errorMessage = null;
-    await saveState();
-  }
-
-  // Skip filtering — go directly from search to send
-  // (Detailed filtering via profile visits is too slow/fragile and not needed by default)
-
-  try {
-    if (currentState.status === 'idle' || currentState.status === 'searching') {
-      try {
-        await executeSearchPhase();
-      } catch (e) {
-        console.error('[bg] Search phase error:', e);
-        currentState.status = 'error';
-        currentState.errorMessage = 'Search failed: ' + (e.message || e);
-        await saveState();
-        return;
-      }
-    }
-
-    // If status was set to 'filtering' by search, move directly to sending
-    if (currentState.status === 'filtering') {
-      console.log('[bg] Skipping filter, moving candidates to send queue');
-      var candidates = await getJSON(KEYS.CANDIDATE_QUEUE);
-      if (candidates && candidates.length > 0) {
-        await setJSON(KEYS.SEND_QUEUE, candidates);
-        currentState.progress.total = candidates.length;
-      }
-      currentState.status = 'sending';
-      await saveState();
-    }
-
-    if (currentState.status === 'sending') {
-      try {
-        await executeSendPhase();
-      } catch (e) {
-        console.error('[bg] Send phase error:', e);
-        currentState.status = 'error';
-        currentState.errorMessage = 'Send failed: ' + (e.message || e);
-        await saveState();
-        return;
-      }
-    }
-  } catch (err) {
-    console.error('[bg] Pipeline error:', err);
-    currentState.status = 'error';
-    currentState.errorMessage = 'Pipeline: ' + (err.message || err);
-    await saveState();
-  }
-}
-
-// ── Message handlers ──
+// ── Message handler ──
 
 chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
-  switch (message.action) {
-    case 'task:start':
-      runPipeline().then(function () {
-        sendResponse({ status: 'started' });
-      });
-      return true;
+  if (message.action === 'task:directSend') {
+    var handles = (message.handles || []).map(function (h) { return h.trim().replace(/^@/, ''); }).filter(Boolean);
+    if (!handles.length) { sendResponse({ error: 'no_handles' }); return true; }
+    executeDirectSend(handles).then(function () { sendResponse({ status: 'started' }); });
+    return true;
+  }
 
-    case 'task:pause':
-      currentState.status = 'paused';
-      saveState().then(function () {
-        sendResponse({ status: 'paused' });
-      });
-      return true;
+  if (message.action === 'task:start') {
+    executeSearchAndSend().then(function () { sendResponse({ status: 'started' }); });
+    return true;
+  }
 
-    case 'task:resume':
-      currentState.status = 'sending';
-      saveState().then(function () {
-        runPipeline().then(function () {
-          sendResponse({ status: 'resumed' });
-        });
-      });
-      return true;
+  if (message.action === 'task:pause') {
+    currentState.status = 'paused'; saveState().then(function () { sendResponse({ status: 'paused' }); });
+    return true;
+  }
 
-    case 'task:stop':
-      currentState.status = 'idle';
-      currentState.progress = { done: 0, total: 0, failed: 0, skipped: 0 };
-      saveState().then(function () {
-        sendResponse({ status: 'stopped' });
-      });
-      return true;
+  if (message.action === 'task:stop') {
+    currentState.status = 'idle';
+    currentState.progress = { done: 0, total: 0, failed: 0, skipped: 0 };
+    saveState().then(function () { sendResponse({ status: 'stopped' }); });
+    return true;
+  }
 
-    case 'task:status':
-      sendResponse(currentState);
-      return true;
-
-    case 'task:directSend':
-      (async function () {
-        var handles = message.handles || [];
-        if (!handles.length) {
-          sendResponse({ error: 'no_handles' });
-          return;
-        }
-
-        var config = (await getJSON(KEYS.TASK_CONFIG)) || DEFAULT_CONFIG;
-
-        // Create simple send queue from handles
-        var sendQueue = handles.map(function (h) {
-          return { handle: h, displayName: '', bio: '', followers: 0, following: 0, postTopics: [], dmsOpen: true, profileUrl: 'https://x.com/' + h };
-        });
-
-        // Reset state
-        currentState.status = 'sending';
-        currentState.progress = { done: 0, total: sendQueue.length, failed: 0, skipped: 0 };
-        currentState.errorMessage = null;
-
-        await setJSON(KEYS.SEND_QUEUE, sendQueue);
-        await saveState();
-
-        console.log('[bg] Direct send: queued ' + sendQueue.length + ' handles, starting send phase');
-        sendResponse({ status: 'started', count: sendQueue.length });
-
-        // Run the send phase directly
-        try {
-          await executeSendPhase();
-        } catch (e) {
-          console.error('[bg] Direct send phase error:', e);
-          currentState.status = 'error';
-          currentState.errorMessage = 'Direct send failed: ' + (e.message || e);
-          await saveState();
-        }
-      })();
-      return true;
-
-    case 'messenger:progress':
-      console.log(
-        '[bg] Messenger progress: ' + message.step + ' for ' + message.handle
-      );
-      break;
+  if (message.action === 'task:status') {
+    sendResponse(currentState);
+    return true;
   }
 });
 
 // ── Startup ──
 
 loadState().then(function () {
-  console.log(
-    '[bg] X Broadcaster service worker ready. State: ' + currentState.status
-  );
+  console.log('[bg] X Broadcaster ready. State: ' + currentState.status);
 });
