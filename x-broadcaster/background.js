@@ -1,7 +1,7 @@
 /**
- * X Broadcaster — execCommand Edition
- * Uses document.execCommand('insertText') for text input.
- * This triggers React's beforeinput handler — React WILL process it.
+ * X Broadcaster — API Edition
+ * Calls X's internal API directly from the page context.
+ * No DOM interaction for text input — uses fetch() with page cookies.
  */
 
 var currentState = {
@@ -13,94 +13,62 @@ async function g(k) { var r = await chrome.storage.local.get([k]); if (r[k]) { t
 async function s(k, v) { var o = {}; o[k] = JSON.stringify(v); return chrome.storage.local.set(o); }
 async function save() { await s('executionState', currentState); }
 
-// ── The DM sender (injected via executeScript) ──
-// Uses execCommand('insertText') which triggers React's beforeinput
+// ── Send DM via X's internal API (runs in page context) ──
 
-function sendOneDM(handle, messageText) {
-  return new Promise(function(resolve) {
-    var sleep = function(ms) { return new Promise(function(r) { setTimeout(r, ms); }); };
-
-    // Magic: execCommand('insertText') fires beforeinput → React processes it
-    function typeText(el, text) {
-      el.focus();
-      el.click();
-      // Try execCommand first (this is what React hooks into)
-      document.execCommand('selectAll', false, null);
-      var ok = document.execCommand('insertText', false, text);
-      // Fallback: direct value assignment + InputEvent
-      if (!ok) {
-        if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
-          el.value = text;
-        } else {
-          el.textContent = text; el.innerText = text;
-        }
+function sendDMviaAPI(handle, messageText, ct0) {
+  // This runs inside the X page via executeScript — has full cookie access
+  return new Promise(async function(resolve) {
+    try {
+      // Extract CSRF token from cookies if not provided
+      if (!ct0) {
+        var match = document.cookie.match(/ct0=([a-f0-9]+)/);
+        ct0 = match ? match[1] : '';
       }
-      // Always fire input event
-      el.dispatchEvent(new InputEvent('input', { inputType: 'insertText', data: text, bubbles: true }));
-      el.dispatchEvent(new Event('change', { bubbles: true }));
-    }
 
-    async function run() {
-      // Step 1: Open new message dialog
-      var btn = document.querySelector('a[aria-label*="New"], a[href="/messages/compose"], [data-testid="composeButton"], [data-testid="newDMButton"]');
-      if (!btn) {
-        // Try finding by text
-        var all = document.querySelectorAll('a, button, [role="button"]');
-        for (var i = 0; i < all.length; i++) {
-          var t = (all[i].textContent || '').trim();
-          var a = (all[i].getAttribute('aria-label') || '').toLowerCase();
-          if (t === 'New message' || t === 'New Message' || a.indexOf('new message') !== -1 || a === 'compose') {
-            btn = all[i]; break;
+      // Try multiple DM API endpoints
+      var endpoints = [
+        {
+          url: 'https://x.com/i/api/1.1/dm/new2.json',
+          body: 'text=' + encodeURIComponent(messageText) + '&participants=' + encodeURIComponent(JSON.stringify([{ screen_name: handle }]))
+        },
+        {
+          url: 'https://x.com/i/api/1.1/dm/new.json',
+          body: 'text=' + encodeURIComponent(messageText) + '&screen_name=' + encodeURIComponent(handle)
+        },
+        {
+          url: 'https://api.x.com/1.1/direct_messages/new.json',
+          body: 'text=' + encodeURIComponent(messageText) + '&screen_name=' + handle
+        },
+      ];
+
+      for (var i = 0; i < endpoints.length; i++) {
+        try {
+          var resp = await fetch(endpoints[i].url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'X-Csrf-Token': ct0,
+              'X-Twitter-Auth-Type': 'OAuth2Session',
+              'X-Twitter-Active-User': 'yes',
+            },
+            body: endpoints[i].body,
+            credentials: 'include',
+          });
+
+          if (resp.ok) {
+            var data = await resp.json();
+            return resolve({ status: 'sent', handle: handle, id: data.id || data.id_str });
           }
+          console.log('API endpoint ' + i + ': HTTP ' + resp.status);
+        } catch(e) {
+          console.log('API endpoint ' + i + ' error: ' + e.message);
         }
       }
-      if (btn) { btn.click(); await sleep(1500); }
-      else {
-        // Fallback: keyboard shortcut 'n'
-        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', code: 'KeyN', keyCode: 78, bubbles: true }));
-        await sleep(1500);
-      }
 
-      // Step 2: Type handle into search
-      var search = document.querySelector('input[placeholder*="Search people"], [data-testid="searchPeople"] input');
-      if (!search) { await sleep(1000); search = document.querySelector('input[placeholder*="Search people"], [data-testid="searchPeople"] input'); }
-      if (!search) return resolve({ error: 'no_search', msg: 'No search box found' });
-
-      typeText(search, handle);
-      await sleep(2000);
-
-      // Step 3: Select first result
-      var first = document.querySelector('[data-testid="TypeaheadUser"], [data-testid="cellInnerDiv"]');
-      if (first) { first.click(); await sleep(1000); }
-
-      // Step 4: Next button (if present)
-      var next = document.querySelector('[data-testid="nextButton"]');
-      if (next) { next.click(); await sleep(1000); }
-
-      // Step 5: Message input
-      var msg = document.querySelector('[data-testid="dmComposerTextInput"], div[contenteditable="true"][role="textbox"], [data-testid="tweetTextarea_0"]');
-      if (!msg) { await sleep(2000); msg = document.querySelector('[data-testid="dmComposerTextInput"], div[contenteditable="true"][role="textbox"]'); }
-      if (!msg) return resolve({ error: 'no_msg', msg: 'No message input found' });
-
-      typeText(msg, messageText);
-      await sleep(1000);
-
-      // Step 6: Send button
-      var send = document.querySelector('[data-testid="dmComposerSendButton"], [data-testid="tweetButton"]');
-      if (!send) {
-        var buttons = document.querySelectorAll('[role="button"], button');
-        for (var j = 0; j < buttons.length; j++) {
-          if ((buttons[j].getAttribute('aria-label') || '').toLowerCase() === 'send') { send = buttons[j]; break; }
-        }
-      }
-      if (!send) return resolve({ error: 'no_send', msg: 'No send button' });
-
-      send.click();
-      await sleep(2000);
-      resolve({ status: 'sent' });
+      resolve({ error: 'all_api_endpoints_failed' });
+    } catch(e) {
+      resolve({ error: e.message });
     }
-
-    run().catch(function(e) { resolve({ error: e.message }); });
   });
 }
 
@@ -119,10 +87,18 @@ async function executeDirectSend(handles) {
 
   if (!tab || !tab.url || tab.url.indexOf('x.com') === -1) {
     currentState.status = 'error';
-    currentState.errorMessage = 'Open X messages page first (x.com/messages)';
+    currentState.errorMessage = 'Open any x.com page first';
     await save();
     return;
   }
+
+  // Get CSRF token from the page
+  var ct0Result = await new Promise(function(resolve) {
+    chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: function() { var m = document.cookie.match(/ct0=([a-f0-9]+)/); return m ? m[1] : ''; },
+    }, function(r) { resolve(r && r[0] ? r[0].result : ''); });
+  });
 
   for (var i = 0; i < handles.length; i++) {
     var handle = handles[i];
@@ -136,15 +112,14 @@ async function executeDirectSend(handles) {
     var template = (config.messageTemplates || ['Hi {username}!'])[0];
     var msg = template.replace('{username}', handle).replace('{link}', config.link || '');
 
-    console.log('[bg] DM to @' + handle);
+    console.log('[bg] API DM to @' + handle);
     var result = await new Promise(function(resolve) {
       chrome.scripting.executeScript({
         target: { tabId: tab.id },
-        func: sendOneDM,
-        args: [handle, msg],
+        func: sendDMviaAPI,
+        args: [handle, msg, ct0Result],
       }, function(frameResults) {
-        var r = frameResults && frameResults[0] ? frameResults[0].result : null;
-        resolve(r || { error: 'script failed' });
+        resolve(frameResults && frameResults[0] ? frameResults[0].result : { error: 'injection failed' });
       });
     });
 
@@ -163,7 +138,7 @@ async function executeDirectSend(handles) {
   await save();
 }
 
-// ── Search ──
+// ── Search (API-based) ──
 
 async function executeSearchAndSend() {
   currentState.status = 'searching'; currentState.errorMessage = null; await save();
@@ -171,6 +146,7 @@ async function executeSearchAndSend() {
   var keyword = config.keywords && config.keywords[0];
   if (!keyword) { currentState.status = 'error'; currentState.errorMessage = 'No keyword configured'; await save(); return; }
 
+  // Open search page
   var tabs = await chrome.tabs.query({ url: 'https://x.com/search*' });
   var tab;
   if (tabs.length > 0) {
@@ -181,6 +157,7 @@ async function executeSearchAndSend() {
   }
   await new Promise(function(r) { setTimeout(r, 5000); });
 
+  // Inject search
   var results = await new Promise(function(resolve) {
     chrome.scripting.executeScript({ target: { tabId: tab.id },
       func: function(kw, max) {
@@ -194,8 +171,7 @@ async function executeSearchAndSend() {
             var found = 0;
             for (var i = 0; i < links.length; i++) {
               var href = (links[i].getAttribute('href') || '').replace(/^\//, '').split('?')[0];
-              if (href.indexOf('/') !== -1) continue;
-              if (href.length < 2 || href.length > 25) continue;
+              if (href.indexOf('/') !== -1 || href.length < 2 || href.length > 25) continue;
               if (['i','search','home','explore','notifications','messages'].indexOf(href) !== -1) continue;
               if (seen.has(href)) continue;
               seen.add(href); results.push({ handle: href }); found++;
@@ -220,15 +196,13 @@ async function executeSearchAndSend() {
   currentState.progress = { done: 0, total: results.length, failed: 0 };
   await save();
 
-  // Open messages tab
-  var msgTabs = await chrome.tabs.query({ url: ['https://x.com/messages*', 'https://x.com/i/chat*'] });
-  var msgTab;
-  if (msgTabs.length > 0) {
-    msgTab = msgTabs[0]; await chrome.tabs.update(msgTab.id, { active: true });
-  } else {
-    msgTab = await chrome.tabs.create({ url: 'https://x.com/messages', active: true });
-  }
-  await new Promise(function(r) { setTimeout(r, 4000); });
+  // Get CSRF token from search page
+  var ct0Result = await new Promise(function(resolve) {
+    chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: function() { var m = document.cookie.match(/ct0=([a-f0-9]+)/); return m ? m[1] : ''; },
+    }, function(r) { resolve(r && r[0] ? r[0].result : ''); });
+  });
 
   var blacklist = (await g('blacklist')) || [];
   for (var i = 0; i < results.length; i++) {
@@ -241,14 +215,14 @@ async function executeSearchAndSend() {
     var template = (config.messageTemplates || ['Hi {username}!'])[0];
     var msg = template.replace('{username}', handle).replace('{link}', config.link || '');
 
-    console.log('[bg] ' + (i+1) + '/' + results.length + ' to @' + handle);
+    console.log('[bg] API DM ' + (i+1) + '/' + results.length + ' to @' + handle);
     var result = await new Promise(function(resolve) {
       chrome.scripting.executeScript({
-        target: { tabId: msgTab.id },
-        func: sendOneDM,
-        args: [handle, msg],
+        target: { tabId: tab.id },
+        func: sendDMviaAPI,
+        args: [handle, msg, ct0Result],
       }, function(frameResults) {
-        resolve(frameResults && frameResults[0] ? frameResults[0].result : null);
+        resolve(frameResults && frameResults[0] ? frameResults[0].result : { error: 'injection failed' });
       });
     });
 
