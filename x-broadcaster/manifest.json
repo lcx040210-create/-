@@ -12,11 +12,5 @@
     "default_popup": "popup/popup.html",
     "default_title": "X Broadcaster"
   },
-  "content_scripts": [
-    {
-      "matches": ["https://x.com/*", "https://twitter.com/*"],
-      "js": ["content/messenger.js"],
-      "run_at": "document_idle"
-    }
-  ]
+  "content_scripts": []
 }

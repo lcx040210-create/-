@@ -1,466 +1,349 @@
 /**
- * X Broadcaster — Service Worker (Simplified)
- *
- * Uses chrome.scripting.executeScript to inject code directly into X pages.
- * No content script message passing — script runs inline, does its work, returns result.
+ * X Broadcaster — Minimal Service Worker
+ * Uses chrome.scripting.executeScript for everything. No content script messaging.
  */
-
-// ── Storage helpers ──
-
-var KEYS = {
-  TASK_CONFIG: 'taskConfig',
-  CANDIDATE_QUEUE: 'candidateQueue',
-  SEND_QUEUE: 'sendQueue',
-  BLACKLIST: 'blacklist',
-  EXECUTION_STATE: 'executionState',
-  SENT_TODAY: 'sentToday',
-  LAST_SEND_DATE: 'lastSendDate',
-};
-
-var DEFAULT_CONFIG = {
-  keywords: [],
-  messageTemplates: ['Hi {username}! {link}'],
-  link: '',
-  interval: { min: 15, max: 30 },
-  dailyLimit: 200,
-  activeHours: { start: 9, end: 23 },
-  maxResults: 100,
-};
-
-async function getJSON(key) {
-  var result = await chrome.storage.local.get([key]);
-  if (result[key]) {
-    try { return JSON.parse(result[key]); } catch (e) { return result[key]; }
-  }
-  return null;
-}
-
-async function setJSON(key, value) {
-  var obj = {};
-  obj[key] = JSON.stringify(value);
-  return chrome.storage.local.set(obj);
-}
-
-// ── Execution state ──
 
 var currentState = {
   status: 'idle',
-  progress: { done: 0, total: 0, failed: 0, skipped: 0 },
+  progress: { done: 0, total: 0, failed: 0 },
   currentHandle: null,
   errorMessage: null,
 };
 
-async function saveState() {
-  await setJSON(KEYS.EXECUTION_STATE, currentState);
+async function getJSON(key) {
+  var r = await chrome.storage.local.get([key]);
+  if (r[key]) { try { return JSON.parse(r[key]); } catch(e) { return r[key]; } }
+  return null;
 }
 
-async function loadState() {
-  var saved = await getJSON(KEYS.EXECUTION_STATE);
-  if (saved) currentState = saved;
+async function setJSON(key, val) {
+  var o = {}; o[key] = JSON.stringify(val);
+  return chrome.storage.local.set(o);
 }
 
-// ── Daily counter ──
+async function saveState() { await setJSON('executionState', currentState); }
 
-async function getTodaysCount() {
-  var today = new Date().toISOString().slice(0, 10);
-  var lastDate = await getJSON(KEYS.LAST_SEND_DATE);
-  if (lastDate !== today) {
-    await setJSON(KEYS.SENT_TODAY, 0);
-    await setJSON(KEYS.LAST_SEND_DATE, today);
-    return 0;
-  }
-  return (await getJSON(KEYS.SENT_TODAY)) || 0;
-}
+// ── Direct Send: inject code into the active tab ──
 
-async function incrementTodaysCount() {
-  var count = await getTodaysCount();
-  await setJSON(KEYS.SENT_TODAY, count + 1);
-}
-
-// ── Script injection helper ──
-
-async function injectAndRun(tabId, funcCode, args) {
+async function injectAndRun(func, args) {
+  var tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tabs.length) return { error: 'no_active_tab' };
   try {
     var results = await chrome.scripting.executeScript({
-      target: { tabId: tabId },
-      func: funcCode,
+      target: { tabId: tabs[0].id },
+      func: func,
       args: args || [],
     });
-    return results && results[0] ? results[0].result : null;
-  } catch (e) {
-    console.error('[bg] Script injection failed:', e.message);
+    return results && results[0] ? results[0].result : { error: 'no_result' };
+  } catch(e) {
     return { error: e.message };
   }
 }
 
-// ── Direct Send: inject DM code into active tab ──
+// ── The DM sender (runs in page context) ──
 
-function dmSender(handle, messageText) {
-  // This function runs AS INJECTED CODE in the X page context
-  return new Promise(function (resolve) {
-    function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+function sendOneDM(handle, messageText) {
+  // This function is injected into X pages via executeScript
+  return new Promise(function(resolve) {
+    function sleep(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
 
-    function waitFor(selectors, timeoutMs) {
-      timeoutMs = timeoutMs || 10000;
-      if (typeof selectors === 'string') selectors = [selectors];
-      return new Promise(function (resolveEl) {
-        for (var i = 0; i < selectors.length; i++) {
-          var found = document.querySelector(selectors[i]);
-          if (found) return resolveEl(found);
-        }
-        var observer = new MutationObserver(function () {
-          for (var i = 0; i < selectors.length; i++) {
-            var f = document.querySelector(selectors[i]);
-            if (f) { observer.disconnect(); resolveEl(f); return; }
-          }
-        });
-        observer.observe(document.body, { childList: true, subtree: true });
-        setTimeout(function () { observer.disconnect(); resolveEl(null); }, timeoutMs);
-      });
-    }
-
-    async function typeText(el, text) {
-      el.focus();
-      for (var i = 0; i < text.length; i++) {
-        el.value = text.slice(0, i + 1);
-        el.textContent = text.slice(0, i + 1);
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        await sleep(40 + Math.random() * 100);
-      }
-    }
-
-    async function doSend() {
-      // 1. Press 'n' to open new message dialog
+    async function doIt() {
+      // Step 1: Press 'n' to open new message dialog (X shortcut)
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', code: 'KeyN', keyCode: 78, bubbles: true }));
       await sleep(1500);
 
-      // 2. Find search/recipient input
-      var searchInput = await waitFor([
-        'input[placeholder*="Search people"]',
-        '[data-testid="searchPeople"] input',
-        'input[aria-label*="Search"]',
-      ], 5000);
+      // Step 2: Find the recipient search input
+      var searchInput = document.querySelector(
+        'input[placeholder*="Search people"], [data-testid="searchPeople"] input, input[aria-label*="Search"]'
+      );
 
+      // If not found, try clicking New Message button first
       if (!searchInput) {
-        // Try clicking the new message button
-        var btns = document.querySelectorAll('a, button, [role="button"]');
-        for (var b = 0; b < btns.length; b++) {
-          var aria = (btns[b].getAttribute('aria-label') || '').toLowerCase();
-          if (aria.indexOf('new message') !== -1 || aria.indexOf('compose') !== -1) {
-            btns[b].click(); await sleep(1500); break;
+        var buttons = document.querySelectorAll('a, button, [role="button"]');
+        for (var i = 0; i < buttons.length; i++) {
+          var a = (buttons[i].getAttribute('aria-label') || '').toLowerCase();
+          if (a.indexOf('new message') !== -1 || a.indexOf('compose') !== -1) {
+            buttons[i].click();
+            await sleep(1500);
+            break;
           }
         }
-        searchInput = await waitFor([
-          'input[placeholder*="Search people"]',
-          '[data-testid="searchPeople"] input',
-        ], 3000);
+        searchInput = document.querySelector(
+          'input[placeholder*="Search people"], [data-testid="searchPeople"] input'
+        );
       }
 
-      if (!searchInput) return resolve({ error: 'no_search_input' });
+      if (!searchInput) {
+        return resolve({ error: 'no_search_input', msg: 'Could not find DM search box. Are you on the messages page?' });
+      }
 
-      // 3. Type recipient handle
-      await typeText(searchInput, handle);
-      await sleep(2000);
+      // Step 3: Type handle character by character
+      searchInput.focus();
+      for (var i = 0; i < handle.length; i++) {
+        searchInput.value = handle.slice(0, i + 1);
+        searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+        await sleep(40 + Math.random() * 80);
+      }
+      await sleep(1500);
 
-      // 4. Click first result
-      var firstResult = document.querySelector('[data-testid="TypeaheadUser"]') ||
-                        document.querySelector('[data-testid="cellInnerDiv"]');
-      if (firstResult) { firstResult.click(); await sleep(1000); }
+      // Step 4: Click first search result
+      var first = document.querySelector('[data-testid="TypeaheadUser"], [data-testid="cellInnerDiv"]');
+      if (first) { first.click(); await sleep(800); }
 
-      // 5. Click Next if present
-      var nextBtn = document.querySelector('[data-testid="nextButton"]');
-      if (nextBtn) { nextBtn.click(); await sleep(1000); }
+      // Step 5: Click Next if present
+      var next = document.querySelector('[data-testid="nextButton"]');
+      if (next) { next.click(); await sleep(800); }
 
-      // 6. Find message input and type
-      var msgInput = await waitFor([
-        '[data-testid="dmComposerTextInput"]',
-        'div[contenteditable="true"][role="textbox"]',
-        'div[data-testid="tweetTextarea_0"] [contenteditable="true"]',
-      ], 5000);
-      if (!msgInput) return resolve({ error: 'no_msg_input' });
+      // Step 6: Type message
+      var msgInput = document.querySelector(
+        '[data-testid="dmComposerTextInput"], div[contenteditable="true"][role="textbox"], [data-testid="tweetTextarea_0"] [contenteditable="true"]'
+      );
+      if (!msgInput) {
+        return resolve({ error: 'no_msg_input', msg: 'Could not find message input. The user may not accept DMs.' });
+      }
+      msgInput.focus();
+      for (var j = 0; j < messageText.length; j++) {
+        msgInput.value = messageText.slice(0, j + 1);
+        msgInput.textContent = messageText.slice(0, j + 1);
+        msgInput.dispatchEvent(new Event('input', { bubbles: true }));
+        await sleep(30 + Math.random() * 80);
+      }
+      await sleep(500);
 
-      await typeText(msgInput, messageText);
-      await sleep(800);
-
-      // 7. Click send
-      var sendBtn = document.querySelector('[data-testid="dmComposerSendButton"]') ||
-                    document.querySelector('button[aria-label="Send"]') ||
-                    document.querySelector('[data-testid="tweetButton"]');
+      // Step 7: Click send
+      var sendBtn = document.querySelector('[data-testid="dmComposerSendButton"], button[aria-label="Send"], [data-testid="tweetButton"]');
       if (!sendBtn) return resolve({ error: 'no_send_btn' });
       sendBtn.click();
-      await sleep(2000);
+      await sleep(1500);
 
       return resolve({ status: 'sent' });
     }
 
-    doSend().catch(function (e) { resolve({ error: e.message }); });
+    doIt().catch(function(e) { resolve({ error: e.message }); });
   });
 }
 
-// ── Direct Send pipeline ──
+// ── Execute Direct Send ──
 
 async function executeDirectSend(handles) {
   currentState.status = 'sending';
-  currentState.progress = { done: 0, total: handles.length, failed: 0, skipped: 0 };
+  currentState.progress = { done: 0, total: handles.length, failed: 0 };
   currentState.errorMessage = null;
   await saveState();
 
-  var config = (await getJSON(KEYS.TASK_CONFIG)) || DEFAULT_CONFIG;
-  var blacklist = (await getJSON(KEYS.BLACKLIST)) || [];
-  var activeTab = (await chrome.tabs.query({ active: true, currentWindow: true }))[0];
-
-  if (!activeTab || activeTab.url.indexOf('x.com') === -1) {
-    currentState.status = 'error';
-    currentState.errorMessage = 'Please open X messages page first (x.com/messages)';
-    await saveState();
-    return;
-  }
-
-  // Ensure we're on the messages page
-  if (activeTab.url.indexOf('/messages') === -1 && activeTab.url.indexOf('/i/chat') === -1) {
-    await chrome.tabs.update(activeTab.id, { url: 'https://x.com/messages' });
-    await new Promise(function (r) { setTimeout(r, 4000); });
-    activeTab = (await chrome.tabs.query({ active: true, currentWindow: true }))[0];
-  }
+  var config = (await getJSON('taskConfig')) || {};
+  var blacklist = (await getJSON('blacklist')) || [];
 
   for (var i = 0; i < handles.length; i++) {
     var handle = handles[i];
-
     if (currentState.status !== 'sending') break;
-
-    var sentToday = await getTodaysCount();
-    if (sentToday >= (config.dailyLimit || 200)) {
-      currentState.status = 'paused'; await saveState(); break;
-    }
-
-    if (blacklist.indexOf(handle) !== -1) {
-      currentState.progress.skipped++; await saveState(); continue;
-    }
 
     currentState.currentHandle = handle;
     currentState.progress.done = i;
     await saveState();
 
-    var variant = config.messageTemplates[Math.floor(Math.random() * config.messageTemplates.length)];
-    var messageText = variant
-      .replace('{username}', handle)
-      .replace('{topic}', config.keywords[0] || '')
-      .replace('{link}', config.link || '');
+    var template = (config.messageTemplates || ['Hi {username}!'])[0];
+    var msg = template.replace('{username}', handle).replace('{link}', config.link || '');
 
-    console.log('[bg] Sending DM to ' + handle + ': ' + messageText);
-
-    var result = await injectAndRun(activeTab.id, dmSender, [handle, messageText]);
-    console.log('[bg] DM result for ' + handle + ':', result);
+    console.log('[bg] Sending DM to ' + handle + ': ' + msg);
+    var result = await injectAndRun(sendOneDM, [handle, msg]);
+    console.log('[bg] Result: ', result);
 
     if (result && result.status === 'sent') {
-      await incrementTodaysCount();
-      var bl = (await getJSON(KEYS.BLACKLIST)) || [];
-      if (bl.indexOf(handle) === -1) { bl.push(handle); await setJSON(KEYS.BLACKLIST, bl); }
+      // success — add to blacklist
+      if (blacklist.indexOf(handle) === -1) {
+        blacklist.push(handle);
+        await setJSON('blacklist', blacklist);
+      }
     } else {
       currentState.progress.failed++;
+      var errMsg = (result && (result.error || result.msg)) || 'unknown';
+      console.warn('[bg] DM failed for ' + handle + ': ' + errMsg);
     }
 
-    var interval = (config.interval.min + Math.random() * (config.interval.max - config.interval.min)) * 1000;
-    await new Promise(function (r) { setTimeout(r, interval); });
+    // Wait between sends
+    var wait = (config.interval ? config.interval.min : 15) + Math.random() * 10;
+    await new Promise(function(r) { setTimeout(r, wait * 1000); });
   }
 
-  if (currentState.progress.done >= handles.length - 1) {
-    currentState.status = 'idle';
-  }
+  if (i >= handles.length) { currentState.status = 'idle'; }
   await saveState();
 }
 
-// ── Search function (injected into search page) ──
+// ── Search & Extract (injected into search page) ──
 
 function searchAndExtract(keyword, maxResults) {
-  // This runs as injected code in the X search page
-  return new Promise(async function (resolve) {
-    function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  return new Promise(async function(resolve) {
+    function sleep(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
 
-    var candidates = [];
+    var results = [];
     var seen = new Set();
-    var noNewStreak = 0;
-    var lastCount = 0;
+    var streak = 0;
 
-    while (candidates.length < maxResults && noNewStreak < 3) {
-      window.scrollBy({ top: 300 + Math.floor(Math.random() * 700), behavior: 'smooth' });
+    while (results.length < maxResults && streak < 3) {
+      window.scrollBy({ top: 300 + Math.random() * 500, behavior: 'smooth' });
       await sleep(2000);
 
-      // Find user links
       var links = document.querySelectorAll('a[href^="/"][role="link"]');
-      var newUsers = 0;
+      var found = 0;
       for (var i = 0; i < links.length; i++) {
         var href = links[i].getAttribute('href') || '';
         var parts = href.replace(/^\//, '').split('?')[0].split('/');
-        if (parts.length !== 1 || parts[0].length < 2 || parts[0].length > 25) continue;
-        var handle = parts[0];
-        if (handle === 'i' || handle === 'search' || handle === 'home' || handle === 'explore' || handle === 'notifications' || handle === 'messages') continue;
-        if (seen.has(handle)) continue;
-        seen.add(handle);
-        candidates.push({ handle: handle, profileUrl: 'https://x.com/' + handle, foundAt: new Date().toISOString() });
-        newUsers++;
-        if (candidates.length >= maxResults) break;
+        if (parts.length !== 1) continue;
+        var h = parts[0];
+        if (h.length < 2 || h.length > 25) continue;
+        if (['i','search','home','explore','notifications','messages'].indexOf(h) !== -1) continue;
+        if (seen.has(h)) continue;
+        seen.add(h);
+        results.push({ handle: h, profileUrl: 'https://x.com/' + h });
+        found++;
+        if (results.length >= maxResults) break;
       }
 
-      if (newUsers === 0) noNewStreak++; else { noNewStreak = 0; lastCount = links.length; }
+      if (found === 0) streak++; else streak = 0;
     }
 
-    return resolve(candidates);
+    resolve(results);
   });
 }
 
-// ── Search pipeline ──
+// ── Search + Send Pipeline ──
 
 async function executeSearchAndSend() {
   currentState.status = 'searching';
   currentState.errorMessage = null;
   await saveState();
 
-  var config = (await getJSON(KEYS.TASK_CONFIG)) || DEFAULT_CONFIG;
-  var keyword = config.keywords[0];
+  var config = (await getJSON('taskConfig')) || {};
+  var keyword = config.keywords && config.keywords[0];
   if (!keyword) {
     currentState.status = 'error';
-    currentState.errorMessage = 'No keyword configured';
+    currentState.errorMessage = 'No keyword. Go to Dashboard -> Config first.';
     await saveState();
     return;
   }
 
   // Open search page
-  var searchUrl = 'https://x.com/search?q=' + encodeURIComponent(keyword) + '&src=typed_query&f=user';
   var tabs = await chrome.tabs.query({ url: 'https://x.com/search*' });
   var tab;
   if (tabs.length > 0) {
     tab = tabs[0];
-    await chrome.tabs.update(tab.id, { url: searchUrl, active: true });
+    await chrome.tabs.update(tab.id, {
+      url: 'https://x.com/search?q=' + encodeURIComponent(keyword) + '&src=typed_query&f=user',
+      active: true
+    });
   } else {
-    tab = await chrome.tabs.create({ url: searchUrl, active: true });
+    tab = await chrome.tabs.create({
+      url: 'https://x.com/search?q=' + encodeURIComponent(keyword) + '&src=typed_query&f=user',
+      active: true
+    });
   }
-  await new Promise(function (r) { setTimeout(r, 5000); });
+  await new Promise(function(r) { setTimeout(r, 5000); });
 
   // Inject search extraction
-  console.log('[bg] Injecting search script...');
-  var result = await injectAndRun(tab.id, searchAndExtract, [keyword, config.maxResults || 100]);
+  console.log('[bg] Injecting search for: ' + keyword);
+  var results = await injectAndRun(searchAndExtract, [keyword, config.maxResults || 100]);
+  console.log('[bg] Search results:', results);
 
-  if (!result || result.error) {
+  if (!results || results.error) {
     currentState.status = 'error';
-    currentState.errorMessage = 'Search failed: ' + (result && result.error ? result.error : 'no result');
+    currentState.errorMessage = 'Search failed: ' + (results && results.error);
     await saveState();
     return;
   }
 
-  var candidates = result;
-  console.log('[bg] Search found ' + candidates.length + ' users');
-
-  if (candidates.length === 0) {
+  if (!results.length) {
     currentState.status = 'error';
     currentState.errorMessage = 'No users found. Try a different keyword.';
     await saveState();
     return;
   }
 
-  // Store and transition to sending
-  await setJSON(KEYS.CANDIDATE_QUEUE, candidates);
+  // Transition to sending
+  await setJSON('candidateQueue', results);
   currentState.status = 'sending';
-  currentState.progress = { done: 0, total: candidates.length, failed: 0, skipped: 0 };
+  currentState.progress = { done: 0, total: results.length, failed: 0 };
   await saveState();
 
-  // Send DMs — use the current active search tab or open messages
-  console.log('[bg] Search done, starting sends...');
+  // Now send DMs
+  var config = (await getJSON('taskConfig')) || {};
+  var blacklist = (await getJSON('blacklist')) || [];
 
-  var config = (await getJSON(KEYS.TASK_CONFIG)) || DEFAULT_CONFIG;
-  var blacklist = (await getJSON(KEYS.BLACKLIST)) || [];
+  // Open messages tab first
+  var msgTabs = await chrome.tabs.query({ url: ['https://x.com/messages*', 'https://x.com/i/chat*'] });
+  var msgTab;
+  if (msgTabs.length > 0) {
+    msgTab = msgTabs[0];
+    await chrome.tabs.update(msgTab.id, { active: true });
+  } else {
+    msgTab = await chrome.tabs.create({ url: 'https://x.com/messages', active: true });
+  }
+  await new Promise(function(r) { setTimeout(r, 4000); });
 
-  for (var i = 0; i < candidates.length; i++) {
-    var handle = candidates[i].handle;
-
+  for (var i = 0; i < results.length; i++) {
+    var handle = results[i].handle;
     if (currentState.status !== 'sending') break;
 
-    var sentToday = await getTodaysCount();
-    if (sentToday >= (config.dailyLimit || 200)) {
-      currentState.status = 'paused'; await saveState(); break;
-    }
-
-    if (blacklist.indexOf(handle) !== -1) {
-      currentState.progress.skipped++; await saveState(); continue;
-    }
+    if (blacklist.indexOf(handle) !== -1) continue;
 
     currentState.currentHandle = handle;
     currentState.progress.done = i;
     await saveState();
 
-    var variant = config.messageTemplates[Math.floor(Math.random() * config.messageTemplates.length)];
-    var messageText = variant
-      .replace('{username}', handle)
-      .replace('{topic}', keyword)
-      .replace('{link}', config.link || '');
+    var template = (config.messageTemplates || ['Hi {username}!'])[0];
+    var msg = template.replace('{username}', handle).replace('{link}', config.link || '');
 
-    // Navigate to messages
-    var msgTabs = await chrome.tabs.query({ url: ['https://x.com/messages*', 'https://x.com/i/chat*'] });
-    var msgTab;
-    if (msgTabs.length > 0) {
-      msgTab = msgTabs[0];
-      await chrome.tabs.update(msgTab.id, { active: true });
-    } else {
-      msgTab = await chrome.tabs.create({ url: 'https://x.com/messages', active: true });
-    }
-    await new Promise(function (r) { setTimeout(r, 3000); });
+    console.log('[bg] ' + (i+1) + '/' + results.length + ' Sending to ' + handle);
+    var result = await injectAndRun(sendOneDM, [handle, msg]);
+    console.log('[bg] DM result:', result);
 
-    console.log('[bg] Sending DM ' + (i+1) + '/' + candidates.length + ' to ' + handle);
-    var dmResult = await injectAndRun(msgTab.id, dmSender, [handle, messageText]);
-    console.log('[bg] DM ' + (i+1) + ' result:', dmResult);
-
-    if (dmResult && dmResult.status === 'sent') {
-      await incrementTodaysCount();
-      if (blacklist.indexOf(handle) === -1) { blacklist.push(handle); await setJSON(KEYS.BLACKLIST, blacklist); }
+    if (result && result.status === 'sent') {
+      if (blacklist.indexOf(handle) === -1) { blacklist.push(handle); await setJSON('blacklist', blacklist); }
     } else {
       currentState.progress.failed++;
     }
 
-    var interval = (config.interval.min + Math.random() * (config.interval.max - config.interval.min)) * 1000;
-    await new Promise(function (r) { setTimeout(r, interval); });
+    var wait = (config.interval ? config.interval.min : 15) + Math.random() * 10;
+    await new Promise(function(r) { setTimeout(r, wait * 1000); });
   }
 
-  if (i >= candidates.length) {
-    currentState.status = 'idle';
-  }
+  if (i >= results.length) { currentState.status = 'idle'; }
   await saveState();
 }
 
-// ── Message handler ──
+// ── Message Handler ──
 
-chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
-  if (message.action === 'task:directSend') {
-    var handles = (message.handles || []).map(function (h) { return h.trim().replace(/^@/, ''); }).filter(Boolean);
-    if (!handles.length) { sendResponse({ error: 'no_handles' }); return true; }
-    executeDirectSend(handles).then(function () { sendResponse({ status: 'started' }); });
+chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
+  if (msg.action === 'task:directSend') {
+    var handles = (msg.handles || []).map(function(h) { return h.trim().replace(/^@/, ''); }).filter(Boolean);
+    if (!handles.length) { sendResponse({ error: 'no handles' }); return true; }
+    executeDirectSend(handles).then(function() { sendResponse({ started: true }); });
     return true;
   }
 
-  if (message.action === 'task:start') {
-    executeSearchAndSend().then(function () { sendResponse({ status: 'started' }); });
+  if (msg.action === 'task:start') {
+    executeSearchAndSend().then(function() { sendResponse({ started: true }); });
     return true;
   }
 
-  if (message.action === 'task:pause') {
-    currentState.status = 'paused'; saveState().then(function () { sendResponse({ status: 'paused' }); });
+  if (msg.action === 'task:pause') {
+    currentState.status = 'paused'; saveState().then(function() { sendResponse({ paused: true }); });
     return true;
   }
 
-  if (message.action === 'task:stop') {
+  if (msg.action === 'task:stop') {
     currentState.status = 'idle';
-    currentState.progress = { done: 0, total: 0, failed: 0, skipped: 0 };
-    saveState().then(function () { sendResponse({ status: 'stopped' }); });
+    currentState.progress = { done: 0, total: 0, failed: 0 };
+    saveState().then(function() { sendResponse({ stopped: true }); });
     return true;
   }
 
-  if (message.action === 'task:status') {
+  if (msg.action === 'task:status') {
     sendResponse(currentState);
     return true;
   }
 });
 
-// ── Startup ──
-
-loadState().then(function () {
-  console.log('[bg] X Broadcaster ready. State: ' + currentState.status);
+saveState().then(function() {
+  console.log('[bg] Ready. State: ' + currentState.status);
 });
