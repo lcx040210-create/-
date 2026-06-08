@@ -77,13 +77,39 @@ function sendOneDM(handle, messageText) {
         return resolve({ error: 'no_search_input', msg: 'Could not find DM search box. Are you on the messages page?' });
       }
 
-      // Step 3: Type handle character by character
-      searchInput.focus();
-      for (var i = 0; i < handle.length; i++) {
-        searchInput.value = handle.slice(0, i + 1);
-        searchInput.dispatchEvent(new Event('input', { bubbles: true }));
-        await sleep(40 + Math.random() * 80);
+      // React-compatible input helper
+      function reactType(el, text) {
+        var isInput = el.tagName === 'INPUT' || el.tagName === 'TEXTAREA';
+        var nativeSetter;
+        if (isInput) {
+          nativeSetter = Object.getOwnPropertyDescriptor(
+            window.HTMLInputElement.prototype, 'value'
+          ).set;
+        } else {
+          nativeSetter = Object.getOwnPropertyDescriptor(
+            window.HTMLTextAreaElement.prototype, 'value'
+          ).set;
+        }
+        el.focus();
+        for (var k = 0; k < text.length; k++) {
+          if (isInput) {
+            nativeSetter.call(el, text.slice(0, k + 1));
+          } else {
+            // For contenteditable, use textContent
+            el.textContent = text.slice(0, k + 1);
+            el.innerText = text.slice(0, k + 1);
+          }
+          el.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+          // Also dispatch keydown/keyup for React synthetic events
+          el.dispatchEvent(new KeyboardEvent('keydown', { key: text[k], bubbles: true }));
+          el.dispatchEvent(new KeyboardEvent('keyup', { key: text[k], bubbles: true }));
+        }
       }
+
+      // Step 3: Type handle
+      searchInput.focus();
+      reactType(searchInput, handle);
       await sleep(1500);
 
       // Step 4: Click first search result
@@ -94,27 +120,41 @@ function sendOneDM(handle, messageText) {
       var next = document.querySelector('[data-testid="nextButton"]');
       if (next) { next.click(); await sleep(800); }
 
-      // Step 6: Type message
+      // Step 6: Find message input and type
       var msgInput = document.querySelector(
-        '[data-testid="dmComposerTextInput"], div[contenteditable="true"][role="textbox"], [data-testid="tweetTextarea_0"] [contenteditable="true"]'
+        '[data-testid="dmComposerTextInput"], div[contenteditable="true"][role="textbox"], [data-testid="tweetTextarea_0"] [contenteditable="true"], [data-testid="tweetTextarea_0"]'
       );
       if (!msgInput) {
-        return resolve({ error: 'no_msg_input', msg: 'Could not find message input. The user may not accept DMs.' });
+        // Try once more after waiting
+        await sleep(2000);
+        msgInput = document.querySelector(
+          '[data-testid="dmComposerTextInput"], div[contenteditable="true"][role="textbox"], [data-testid="tweetTextarea_0"] [contenteditable="true"], [data-testid="tweetTextarea_0"]'
+        );
       }
-      msgInput.focus();
-      for (var j = 0; j < messageText.length; j++) {
-        msgInput.value = messageText.slice(0, j + 1);
-        msgInput.textContent = messageText.slice(0, j + 1);
-        msgInput.dispatchEvent(new Event('input', { bubbles: true }));
-        await sleep(30 + Math.random() * 80);
+      if (!msgInput) {
+        return resolve({ error: 'no_msg_input', msg: 'Could not find message input.' });
       }
+
+      reactType(msgInput, messageText);
       await sleep(500);
 
       // Step 7: Click send
-      var sendBtn = document.querySelector('[data-testid="dmComposerSendButton"], button[aria-label="Send"], [data-testid="tweetButton"]');
+      var sendBtn = document.querySelector(
+        '[data-testid="dmComposerSendButton"], button[aria-label="Send"], [data-testid="tweetButton"], div[role="button"][data-testid="dmComposerSendButton"]'
+      );
+      if (!sendBtn) {
+        // Try finding by attribute
+        var all = document.querySelectorAll('[role="button"], button');
+        for (var b = 0; b < all.length; b++) {
+          var a = (all[b].getAttribute('aria-label') || '').toLowerCase();
+          if (a === 'send' || a.indexOf('send') !== -1) {
+            sendBtn = all[b]; break;
+          }
+        }
+      }
       if (!sendBtn) return resolve({ error: 'no_send_btn' });
       sendBtn.click();
-      await sleep(1500);
+      await sleep(2000);
 
       return resolve({ status: 'sent' });
     }
