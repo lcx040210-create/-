@@ -198,9 +198,23 @@ async function executeSearchPhase() {
   }
 
   if (response.status === 'done') {
+    // Log diagnostic info from the search page
+    if (response.diagnostic) {
+      console.log('[bg] Search page diagnostic:', JSON.stringify(response.diagnostic));
+      if (response.diagnostic.loginStatus) {
+        console.error('[bg] User is NOT logged into X!');
+        currentState.status = 'error';
+        currentState.errorMessage = 'Not logged into X. Please log in at x.com first.';
+        await saveState();
+        return { error: 'not_logged_in' };
+      }
+    }
+    if (response.found === 0) {
+      console.warn('[bg] Search found 0 users. Page testIds:', response.diagnostic && response.diagnostic.testIds);
+    }
     currentState.progress.total = response.total;
     currentState.status = 'filtering';
-    console.log('[bg] Search done. Found ' + response.found + ' candidates, total queue: ' + response.total);
+    console.log('[bg] Search done. Found ' + response.found + ' candidates');
     await saveState();
   } else if (response.status === 'navigating') {
     console.log('[bg] Search page still navigating, retrying...');
