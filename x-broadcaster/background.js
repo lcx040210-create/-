@@ -146,8 +146,10 @@ async function executeSearchPhase() {
   await saveState();
 
   var config = (await getJSON(KEYS.TASK_CONFIG)) || DEFAULT_CONFIG;
-  var keyword = config.keywords[0];
+  console.log('[bg] Search phase — loaded config. keywords:', config.keywords, 'full config keys:', Object.keys(config));
+  var keyword = config.keywords && config.keywords[0];
   if (!keyword) {
+    console.warn('[bg] No keyword found. Config:', JSON.stringify(config).substring(0, 200));
     currentState.status = 'error';
     currentState.errorMessage = 'No search keyword configured. Go to Dashboard → Config.';
     await saveState();

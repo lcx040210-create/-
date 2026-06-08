@@ -97,9 +97,19 @@ function collectConfig() {
 
 $('#btnSaveConfig').addEventListener('click', async function () {
   var config = collectConfig();
-  await chrome.storage.local.set({ taskConfig: JSON.stringify(config) });
-  $('#saveStatus').textContent = 'Saved!';
-  setTimeout(function () { $('#saveStatus').textContent = ''; }, 2000);
+  try {
+    await chrome.storage.local.set({ taskConfig: JSON.stringify(config) });
+    // Verify immediately
+    var verify = await chrome.storage.local.get(['taskConfig']);
+    console.log('[Dashboard] Saved config. Keywords:', config.keywords, 'Stored:', verify.taskConfig ? 'OK' : 'MISSING');
+    $('#saveStatus').textContent = 'Saved!';
+    $('#saveStatus').style.color = '#00ba7c';
+  } catch (e) {
+    console.error('[Dashboard] Save failed:', e);
+    $('#saveStatus').textContent = 'Error: ' + e.message;
+    $('#saveStatus').style.color = '#f4212e';
+  }
+  setTimeout(function () { $('#saveStatus').textContent = ''; }, 3000);
 });
 
 // ── Candidates Tab ──
