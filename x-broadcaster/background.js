@@ -189,13 +189,29 @@ async function executeSearchPhase() {
     return { error: 'search_tab_failed' };
   }
 
-  if (response && response.status === 'done') {
+  if (!response) {
+    console.error('[bg] Search got null/undefined response from content script');
+    currentState.status = 'error';
+    currentState.errorMessage = 'Search returned empty response. Check X page.';
+    await saveState();
+    return { error: 'null_response' };
+  }
+
+  if (response.status === 'done') {
     currentState.progress.total = response.total;
     currentState.status = 'filtering';
+    console.log('[bg] Search done. Found ' + response.found + ' candidates, total queue: ' + response.total);
     await saveState();
-  } else if (response && response.status === 'navigating') {
+  } else if (response.status === 'navigating') {
+    console.log('[bg] Search page still navigating, retrying...');
     await new Promise(function (r) { setTimeout(r, 5000); });
     return executeSearchPhase();
+  } else {
+    console.warn('[bg] Search unexpected response:', JSON.stringify(response));
+    currentState.status = 'error';
+    currentState.errorMessage = 'Unexpected search response: ' + (response.error || JSON.stringify(response));
+    await saveState();
+    return { error: 'unexpected_response' };
   }
 
   return response;

@@ -12,39 +12,37 @@
 (function () {
   'use strict';
 
-  let running = false;
-  let stopRequested = false;
+  var running = false;
+  var stopRequested = false;
 
-  // ── DOM selectors (mirrors shared/xpaths.js) ──
-
-  const SEL_USER_CELL = 'div[data-testid="UserCell"]';
-  const SEL_HANDLE_LINK = 'a[href^="/"][role="link"][tabindex="-1"]';
-  const SEL_HANDLE_LINK_FB = 'a[role="link"][href^="/"][tabindex="-1"]';
-  const SEL_DISPLAY_NAME = 'span.css-1jxf684';
-  const SEL_AVATAR_IMG = 'img[src*="twimg.com"]';
+  var SEL_USER_CELL = 'div[data-testid="UserCell"]';
+  var SEL_HANDLE_LINK = 'a[href^="/"][role="link"][tabindex="-1"]';
+  var SEL_HANDLE_LINK_FB = 'a[role="link"][href^="/"][tabindex="-1"]';
+  var SEL_DISPLAY_NAME = 'span.css-1jxf684';
+  var SEL_AVATAR_IMG = 'img[src*="twimg.com"]';
 
   // ── DOM extraction ──
 
   function extractHandle(cell) {
-    let link = cell.querySelector(SEL_HANDLE_LINK);
+    var link = cell.querySelector(SEL_HANDLE_LINK);
     if (!link) link = cell.querySelector(SEL_HANDLE_LINK_FB);
     if (!link) return null;
-    const href = link.getAttribute('href');
+    var href = link.getAttribute('href');
     if (!href) return null;
     return href.replace(/^\//, '').split('?')[0];
   }
 
   function extractDisplayName(cell) {
-    const el = cell.querySelector(SEL_DISPLAY_NAME);
+    var el = cell.querySelector(SEL_DISPLAY_NAME);
     return el ? el.textContent.trim() : '';
   }
 
   function extractBio(cell) {
-    const spans = cell.querySelectorAll(
+    var spans = cell.querySelectorAll(
       'div[dir="ltr"] span, div[dir="auto"] span'
     );
-    for (const span of spans) {
-      const text = span.textContent.trim();
+    for (var i = 0; i < spans.length; i++) {
+      var text = spans[i].textContent.trim();
       if (text.length > 20) return text;
     }
     return '';
@@ -55,23 +53,23 @@
   }
 
   function extractUserCard(cell) {
-    const handle = extractHandle(cell);
+    var handle = extractHandle(cell);
     if (!handle || handle === 'i' || handle.includes(' ') || handle.length < 2) {
       return null;
     }
 
     return {
-      handle,
+      handle: handle,
       displayName: extractDisplayName(cell),
       bio: extractBio(cell),
       hasAvatar: hasAvatar(cell),
-      hasBio: false, // filled below after bio extraction
+      hasBio: false,
       profileUrl: 'https://x.com/' + handle,
       foundAt: new Date().toISOString(),
     };
   }
 
-  // ── Quick filter (Stage 1 — inline from shared/filter.js) ──
+  // ── Quick filter (Stage 1) ──
 
   function quickFilter(user, rules) {
     if (!rules) return true;
@@ -156,26 +154,39 @@
         return true;
       }
 
-      runSearch(keyword, maxResults, filterRules).then(function (candidates) {
-        chrome.storage.local.get(['candidateQueue'], function (result) {
-          var queue = result.candidateQueue
-            ? JSON.parse(result.candidateQueue)
-            : [];
-          var updated = queue.concat(candidates);
-          chrome.storage.local.set(
-            { candidateQueue: JSON.stringify(updated) },
-            function () {
-              sendResponse({
-                status: 'done',
-                found: candidates.length,
-                total: updated.length,
-              });
+      runSearch(keyword, maxResults, filterRules)
+        .then(function (candidates) {
+          // Always respond, even if 0 results
+          chrome.storage.local.get(['candidateQueue'], function (result) {
+            var queue = [];
+            var raw = result.candidateQueue;
+            if (raw) {
+              queue = typeof raw === 'string' ? JSON.parse(raw) : raw;
             }
-          );
+            var updated = queue.concat(candidates);
+            chrome.storage.local.set(
+              { candidateQueue: JSON.stringify(updated) },
+              function () {
+                sendResponse({
+                  status: 'done',
+                  found: candidates.length,
+                  total: updated.length,
+                });
+              }
+            );
+          });
+        })
+        .catch(function (err) {
+          console.error('[search] runSearch error:', err);
+          sendResponse({
+            status: 'done',
+            found: 0,
+            total: 0,
+            error: err && err.message ? err.message : 'search_error',
+          });
         });
-      });
 
-      return true;
+      return true; // keep message channel open
     }
 
     if (message.action === 'search:stop') {

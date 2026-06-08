@@ -94,20 +94,23 @@
   }
 
   function checkDmsOpen() {
-    var dmBtn =
+    return !!(
       document.querySelector('[data-testid="sendDMButton"]') ||
       document.querySelector('[data-testid="messageButton"]') ||
-      document.querySelector('button[aria-label="Message"]');
-    return !!dmBtn;
+      document.querySelector('button[aria-label="Message"]')
+    );
   }
 
   function isPrivateAccount() {
-    var body = document.body.textContent;
-    return (
-      body.indexOf('These posts are protected') !== -1 ||
-      body.indexOf('These Tweets are protected') !== -1 ||
-      body.indexOf('protected their Tweets') !== -1
-    );
+    var texts = [
+      'These posts are protected',
+      'These Tweets are protected',
+      'protected their Tweets',
+    ];
+    for (var i = 0; i < texts.length; i++) {
+      if (document.body.textContent.indexOf(texts[i]) !== -1) return true;
+    }
+    return false;
   }
 
   function extract() {
@@ -130,7 +133,11 @@
 
   chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
     if (message.action === 'profile:extract') {
-      sendResponse(extract());
+      try {
+        sendResponse(extract());
+      } catch (e) {
+        sendResponse({ error: 'extract_error', message: e.message });
+      }
       return true;
     }
   });
