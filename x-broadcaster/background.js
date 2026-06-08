@@ -77,33 +77,22 @@ function sendOneDM(handle, messageText) {
         return resolve({ error: 'no_search_input', msg: 'Could not find DM search box. Are you on the messages page?' });
       }
 
-      // React-compatible input helper
+      // Type text into an element (compatible with React's value override)
       function reactType(el, text) {
-        var isInput = el.tagName === 'INPUT' || el.tagName === 'TEXTAREA';
-        var nativeSetter;
-        if (isInput) {
-          nativeSetter = Object.getOwnPropertyDescriptor(
-            window.HTMLInputElement.prototype, 'value'
-          ).set;
-        } else {
-          nativeSetter = Object.getOwnPropertyDescriptor(
-            window.HTMLTextAreaElement.prototype, 'value'
-          ).set;
-        }
         el.focus();
+        // For input elements, assign value directly — React's instance-level
+        // value override will intercept this. For contenteditable, use textContent.
+        var isInput = el.tagName === 'INPUT' || el.tagName === 'TEXTAREA';
         for (var k = 0; k < text.length; k++) {
           if (isInput) {
-            nativeSetter.call(el, text.slice(0, k + 1));
+            el.value = text.slice(0, k + 1);  // Goes through React's setter
           } else {
-            // For contenteditable, use textContent
             el.textContent = text.slice(0, k + 1);
             el.innerText = text.slice(0, k + 1);
           }
-          el.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
-          el.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
-          // Also dispatch keydown/keyup for React synthetic events
-          el.dispatchEvent(new KeyboardEvent('keydown', { key: text[k], bubbles: true }));
-          el.dispatchEvent(new KeyboardEvent('keyup', { key: text[k], bubbles: true }));
+          // Fire events React listens for
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
         }
       }
 
