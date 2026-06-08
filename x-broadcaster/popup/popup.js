@@ -33,6 +33,11 @@ function updateUI(state) {
     setButtons(false, false, true);
     currentAction.classList.remove('hidden');
     actionText.textContent = state.status + '...';
+  } else if (state.status === 'error') {
+    setButtons(true, false, true);
+    currentAction.classList.remove('hidden');
+    currentAction.style.color = '#f4212e';
+    actionText.textContent = state.errorMessage || 'Unknown error';
   } else {
     setButtons(true, false, false);
     currentAction.classList.add('hidden');

@@ -99,6 +99,7 @@ var currentState = {
   taskId: null,
   progress: { done: 0, total: 0, failed: 0, skipped: 0 },
   currentHandle: null,
+  errorMessage: null,
 };
 
 async function saveState() {
@@ -148,6 +149,7 @@ async function executeSearchPhase() {
   var keyword = config.keywords[0];
   if (!keyword) {
     currentState.status = 'error';
+    currentState.errorMessage = 'No search keyword configured. Go to Dashboard → Config.';
     await saveState();
     return { error: 'no_keyword' };
   }
@@ -166,15 +168,24 @@ async function executeSearchPhase() {
     tab = await chrome.tabs.create({ url: searchUrl, active: true });
   }
 
-  await new Promise(function (r) { setTimeout(r, 4000); });
+  // Wait for page to fully load + content script to initialize
+  await new Promise(function (r) { setTimeout(r, 5000); });
 
   // Use longer timeout for search — it scrolls and can take 30-60s
-  var response = await sendToTab(tab.id, 'search:start', {
-    keyword: keyword,
-    maxResults: config.maxResults || 100,
-    filterRules: config.filterRules,
-  }, 90000);
-  // 90-second timeout for search (vs default 10s)
+  var response;
+  try {
+    response = await sendToTab(tab.id, 'search:start', {
+      keyword: keyword,
+      maxResults: config.maxResults || 100,
+      filterRules: config.filterRules,
+    }, 120000);
+  } catch (searchErr) {
+    console.error('[bg] Search sendToTab failed:', searchErr.message);
+    currentState.status = 'error';
+    currentState.errorMessage = 'Search tab not ready. Is X logged in? ' + searchErr.message;
+    await saveState();
+    return { error: 'search_tab_failed' };
+  }
 
   if (response && response.status === 'done') {
     currentState.progress.total = response.total;
@@ -397,22 +408,48 @@ async function runPipeline() {
 
   if (currentState.status === 'idle') {
     currentState.progress = { done: 0, total: 0, failed: 0, skipped: 0 };
+    currentState.errorMessage = null;
     await saveState();
   }
 
   try {
     if (currentState.status === 'idle' || currentState.status === 'searching') {
-      await executeSearchPhase();
+      try {
+        await executeSearchPhase();
+      } catch (e) {
+        console.error('[bg] Search phase error:', e);
+        currentState.status = 'error';
+        currentState.errorMessage = 'Search failed: ' + (e.message || e);
+        await saveState();
+        return;
+      }
     }
     if (currentState.status === 'filtering') {
-      await executeFilterPhase();
+      try {
+        await executeFilterPhase();
+      } catch (e) {
+        console.error('[bg] Filter phase error:', e);
+        currentState.status = 'error';
+        currentState.errorMessage = 'Filter failed: ' + (e.message || e);
+        await saveState();
+        return;
+      }
     }
     if (currentState.status === 'sending') {
-      await executeSendPhase();
+      try {
+        await executeSendPhase();
+      } catch (e) {
+        console.error('[bg] Send phase error:', e);
+        currentState.status = 'error';
+        currentState.errorMessage = 'Send failed: ' + (e.message || e);
+        await saveState();
+        return;
+      }
     }
   } catch (err) {
     console.error('[bg] Pipeline error:', err);
     currentState.status = 'error';
+    currentState.errorMessage = 'Pipeline: ' + (err.message || err);
     await saveState();
   }
 }
