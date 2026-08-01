@@ -1,0 +1,421 @@
+/* ==========================================================================
+   Li Chengxi — Web3 Resume
+   Rick & Morty Visual System (Task 2)
+   --------------------------------------------------------------------------
+   Console-terminal lab aesthetic: portal green on deep space black,
+   bordered "console cards" with corner glyphs, scanline section titles.
+   All brief CSS is verbatim from task-2-brief.md. Supporting styles
+   (marked "Supporting:") fill gaps the brief references but does not
+   define so the page renders as a self-contained visual system.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Step 1: CSS 变量 + 全局重置
+   -------------------------------------------------------------------------- */
+:root {
+  --portal-green: #97ce4c;
+  --portal-green-glow: rgba(151, 206, 76, 0.4);
+  --portal-blue: #00b5cc;
+  --morty-yellow: #f5e642;
+  --space-black: #0a0e17;
+  --lab-gray: #1a1f2e;
+  --lab-gray-light: #222840;
+  --text-white: #e8e8e8;
+  --text-dim: #94a3b8;
+  --text-muted: #64748b;
+  --font-display: 'Creepster', cursive;
+  --font-body: 'Inter', 'Noto Sans SC', -apple-system, sans-serif;
+}
+
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: var(--font-body);
+  background: var(--space-black);
+  color: var(--text-white);
+  line-height: 1.6;
+  overflow-x: hidden;
+}
+
+#portal-canvas {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  z-index: 0; pointer-events: none;
+}
+
+/* Supporting: content layer — keeps all sections above the fixed canvas
+   background and centers the page. The brief's mobile breakpoint also
+   references #content padding, so a base is required. */
+#content {
+  position: relative;
+  z-index: 1;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 24px 60px;
+}
+
+/* Supporting: consistent vertical rhythm between sections. */
+#skills,
+#web3-experience,
+#professional-experience {
+  margin-bottom: 40px;
+}
+
+/* --------------------------------------------------------------------------
+   Step 2: 控制台卡片系统
+   -------------------------------------------------------------------------- */
+.console-card {
+  background: var(--lab-gray);
+  border: 1px solid rgba(151, 206, 76, 0.25);
+  border-radius: 4px;
+  padding: 28px 32px;
+  position: relative;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+  z-index: 1;
+}
+
+.console-card:hover {
+  border-color: rgba(151, 206, 76, 0.7);
+  box-shadow: 0 0 20px rgba(151, 206, 76, 0.08), inset 0 0 20px rgba(151, 206, 76, 0.02);
+}
+
+/* Four-corner decorations. Each .card-corners only has ::before and ::after,
+   so each pseudo-element draws a pair of corners. The prior
+   letter-spacing: calc(100% - 24px) was invalid (percentages are not allowed
+   for letter-spacing), so each corner is drawn as an L-bracket from a pair of
+   linear-gradients. */
+.card-corners::before,
+.card-corners::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  height: 12px;
+  background-image:
+    linear-gradient(rgba(151, 206, 76, 0.5) 0 100%),
+    linear-gradient(rgba(151, 206, 76, 0.5) 0 100%),
+    linear-gradient(rgba(151, 206, 76, 0.5) 0 100%),
+    linear-gradient(rgba(151, 206, 76, 0.5) 0 100%);
+  background-repeat: no-repeat;
+  background-size: 12px 2px, 2px 12px, 12px 2px, 2px 12px;
+}
+.card-corners::before {
+  top: 6px; left: 10px; right: 10px;
+  background-position: 0 0, 0 0, 100% 0, 100% 0;
+}
+.card-corners::after {
+  bottom: 6px; left: 10px; right: 10px;
+  background-position: 0 100%, 0 100%, 100% 100%, 100% 100%;
+}
+
+/* Scan line effect on section titles */
+.scan-line {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  color: var(--portal-green);
+  letter-spacing: 0.04em;
+  position: relative;
+}
+.scan-line::after {
+  content: '';
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+  background: repeating-linear-gradient(
+    0deg, transparent, transparent 2px,
+    rgba(151, 206, 76, 0.03) 2px, rgba(151, 206, 76, 0.03) 4px
+  );
+  pointer-events: none;
+  animation: scanlinePulse 3s linear infinite;
+}
+@keyframes scanlinePulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.7; }
+}
+
+/* Supporting: base section-title — the HTML uses .section-title alone on
+   education/tools cards, and .section-title scan-line on the other
+   sections. This base gives those standalone titles the same lab look. */
+.section-title {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  color: var(--portal-green);
+  letter-spacing: 0.04em;
+  margin-bottom: 20px;
+}
+
+/* --------------------------------------------------------------------------
+   Step 3: 导航栏 + 语言切换按钮
+   -------------------------------------------------------------------------- */
+#navbar {
+  position: fixed; top: 0; left: 0; right: 0;
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 12px 32px;
+  background: rgba(10, 14, 23, 0.92);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(151, 206, 76, 0.2);
+  z-index: 100;
+}
+.logo { font-family: var(--font-display); font-size: 1.1rem; color: var(--portal-green); }
+
+#lang-toggle {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--lab-gray);
+  border: 1px solid rgba(151, 206, 76, 0.3);
+  border-radius: 20px; padding: 6px 16px;
+  color: var(--text-white); cursor: pointer;
+  font-family: var(--font-body); font-size: 0.8rem;
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+#lang-toggle:hover {
+  border-color: var(--portal-green);
+  box-shadow: 0 0 12px var(--portal-green-glow);
+}
+
+/* Supporting: children of #lang-toggle — a small glowing portal dot sits
+   between the EN / 中文 labels. */
+.lang-label { line-height: 1; }
+.portal-icon {
+  display: inline-block;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--portal-green);
+  box-shadow: 0 0 6px var(--portal-green-glow), inset 0 0 4px rgba(151, 206, 76, 0.4);
+}
+
+/* --------------------------------------------------------------------------
+   Step 4: Hero 区域样式
+   -------------------------------------------------------------------------- */
+#hero {
+  max-width: 800px; margin: 100px auto 40px;
+  text-align: center;
+}
+.hero-name {
+  font-family: var(--font-display);
+  font-size: 3rem;
+  color: var(--portal-green);
+  text-shadow: 0 0 30px var(--portal-green-glow);
+  letter-spacing: 0.04em;
+}
+.hero-title {
+  font-size: 0.95rem; color: var(--text-dim); margin-top: 8px;
+}
+.hero-contact {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 12px;
+  margin-top: 16px; font-size: 0.8rem; color: var(--text-dim);
+}
+.hero-contact a { color: var(--portal-blue); text-decoration: none; }
+.hero-summary {
+  margin-top: 20px; font-size: 0.85rem; color: var(--text-dim);
+  text-align: left; line-height: 1.8;
+}
+
+/* --------------------------------------------------------------------------
+   Step 5: 技能仪表盘 + 时间线
+   -------------------------------------------------------------------------- */
+.skills-grid {
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px;
+  margin-top: 20px;
+}
+.skill-panel {
+  background: rgba(26, 31, 46, 0.8);
+  border: 1px solid rgba(151, 206, 76, 0.2);
+  border-radius: 4px; padding: 16px;
+  transition: border-color 0.3s;
+}
+.skill-panel:hover { border-color: var(--portal-green); }
+.skill-panel h3 { font-size: 0.8rem; color: var(--portal-green); margin-bottom: 10px; }
+.skill-panel li { font-size: 0.72rem; color: var(--text-dim); padding: 3px 0; list-style: none; }
+.skill-panel li::before { content: '▸ '; color: var(--portal-green); }
+
+/* Supporting: reset the <ul> so the ▸ markers in .skill-panel li sit flush
+   with the panel edge instead of inheriting the browser's default indent. */
+.skill-panel ul { list-style: none; padding: 0; }
+
+.timeline { position: relative; padding-left: 0; }
+.timeline-item { margin-bottom: 20px; }
+.exp-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
+.exp-header h3 { font-size: 0.95rem; color: var(--portal-green); }
+.exp-date { font-size: 0.72rem; color: var(--text-muted); }
+.exp-bullets { list-style: none; padding: 0; }
+.exp-bullets li {
+  font-size: 0.78rem; color: var(--text-dim); padding: 4px 0 4px 16px;
+  position: relative; line-height: 1.6;
+}
+.exp-bullets li::before { content: '▸'; position: absolute; left: 0; color: var(--portal-green); font-size: 0.6rem; top: 6px; }
+
+/* Supporting: two-column layout for the education / languages section.
+   Required — the brief's mobile breakpoint sets .two-col grid-template
+   columns, so a base two-column grid is needed. */
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+/* --------------------------------------------------------------------------
+   Step 6: 传送门覆盖动画
+   -------------------------------------------------------------------------- */
+#portal-overlay {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background: radial-gradient(circle, var(--portal-green) 0%, transparent 70%);
+  opacity: 0; pointer-events: none; z-index: 200;
+  transition: opacity 0.15s ease;
+  clip-path: circle(0% at 50% 50%);
+}
+#portal-overlay.active {
+  clip-path: circle(150% at 50% 50%);
+  opacity: 0.6;
+  transition: clip-path 0.4s ease-in, opacity 0.3s ease;
+}
+
+/* --------------------------------------------------------------------------
+   Step 7: 滚动进度条
+   -------------------------------------------------------------------------- */
+#scroll-progress {
+  position: fixed; left: 0; top: 0; width: 3px; height: 0%;
+  background: var(--portal-green);
+  box-shadow: 0 0 8px var(--portal-green-glow);
+  z-index: 150;
+  transition: height 0.1s linear;
+}
+
+/* --------------------------------------------------------------------------
+   Step 8: 动画关键帧
+   -------------------------------------------------------------------------- */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-in {
+  animation: fadeInUp 0.5s ease forwards;
+}
+
+@keyframes floatUp {
+  0%   { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-60px) scale(0.8); }
+}
+
+@keyframes portalSpin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* Supporting: portalExpand is listed in the brief's interface contract as a
+   keyframe Task 6/7 JS will trigger. Step 8's code block only defines
+   fadeInUp / floatUp / portalSpin, so this fills the gap. */
+@keyframes portalExpand {
+  0%   { transform: scale(0.1) rotate(0deg); opacity: 0; }
+  60%  { transform: scale(1.1) rotate(180deg); opacity: 1; }
+  100% { transform: scale(1) rotate(360deg); opacity: 1; }
+}
+
+/* --------------------------------------------------------------------------
+   Step 9: 响应式
+   -------------------------------------------------------------------------- */
+@media (max-width: 1199px) {
+  .skills-grid { grid-template-columns: repeat(3, 1fr); }
+  #hero { margin-top: 80px; padding: 0 20px; }
+  .hero-name { font-size: 2.2rem; }
+}
+
+@media (max-width: 767px) {
+  .skills-grid { grid-template-columns: 1fr; }
+  #navbar { padding: 10px 16px; }
+  .logo { font-size: 0.9rem; }
+  .hero-name { font-size: 1.8rem; }
+  .console-card { padding: 20px 16px; }
+  .exp-header { flex-direction: column; gap: 4px; }
+  #content { padding: 0 12px; }
+  .two-col { grid-template-columns: 1fr; }
+}
+
+/* --------------------------------------------------------------------------
+   Step 10: 页脚
+   -------------------------------------------------------------------------- */
+footer {
+  text-align: center; padding: 40px 20px;
+  border-top: 1px solid rgba(151, 206, 76, 0.15);
+  margin-top: 40px;
+}
+#rick-quote {
+  font-family: var(--font-display); font-size: 1.2rem;
+  color: var(--portal-green); opacity: 0.7;
+}
+
+/* --------------------------------------------------------------------------
+   Supporting: education & tools card internals
+   -------------------------------------------------------------------------- */
+.edu-block,
+.lang-block,
+.tools-block,
+.extra-block { margin-bottom: 20px; }
+
+.edu-block h3,
+.lang-block h3,
+.tools-block h3,
+.extra-block h3 {
+  font-size: 0.9rem;
+  color: var(--portal-green);
+  margin-bottom: 8px;
+}
+
+.edu-sub {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+.edu-note {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 8px;
+  line-height: 1.7;
+}
+
+.tools-block p {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+}
+
+.certs-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 8px;
+  font-size: 0.78rem;
+}
+.certs-table th,
+.certs-table td {
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid rgba(151, 206, 76, 0.15);
+  color: var(--text-dim);
+}
+.certs-table th { color: var(--portal-green); font-weight: 600; }
+
+/* Supporting: fixed overlay ready for Task 6 easter-egg layer. Empty now,
+   so it is invisible; pointer-events disabled so it never blocks the UI. */
+#easter-egg-layer {
+  position: fixed; inset: 0;
+  pointer-events: none;
+  z-index: 300;
+}
+
+/* --------------------------------------------------------------------------
+   Step 11: Rick 吐槽气泡 (Task 5 easter egg)
+   -------------------------------------------------------------------------- */
+/* Rick bubble — appears bottom-right, floats up and fades after 5s (JS
+   swaps the animation to floatUp and removes the node once it finishes). */
+.rick-bubble {
+  position: fixed; bottom: 80px; right: 20px; z-index: 180;
+  display: flex; align-items: flex-start; gap: 10px;
+  max-width: 320px; padding: 14px 18px;
+  background: var(--lab-gray);
+  border: 1px solid var(--portal-green);
+  border-radius: 12px;
+  box-shadow: 0 0 20px rgba(151, 206, 76, 0.15);
+  animation: fadeInUp 0.4s ease;
+}
+.bubble-avatar { font-size: 1.5rem; }
+.bubble-text { font-size: 0.8rem; color: var(--text-dim); line-height: 1.5; font-style: italic; }
