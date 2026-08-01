@@ -1,339 +1,191 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Li Chengxi — Web3 Resume</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Creepster&family=Inter:wght@300;400;500;600;700;800&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Li Chengxi — Multiverse Resume</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Creepster&family=Inter:wght@300;400;500;600;700;800&family=Noto+Sans+SC:wght@300;400;500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <!-- Canvas background -->
-  <canvas id="portal-canvas"></canvas>
 
-  <!-- Scroll progress bar -->
-  <div id="scroll-progress"></div>
+<!-- Starfield background -->
+<canvas id="starfield-canvas"></canvas>
 
-  <!-- Language toggle -->
-  <nav id="navbar">
-    <span class="logo">🧪 LI CHENGXI</span>
-    <button id="lang-toggle" aria-label="Switch language">
-      <span class="lang-label">EN</span>
-      <span class="portal-icon"></span>
-      <span class="lang-label">中文</span>
-    </button>
-  </nav>
+<!-- Character speech bubbles -->
+<div id="character-bubbles"></div>
 
-  <!-- Portal overlay for transition animation -->
-  <div id="portal-overlay"></div>
+<!-- ==================== PORTAL HUB ==================== -->
+<div id="portal-hub">
+  <button id="sound-toggle" class="sound-btn" data-en="🔇 Sound Off" data-zh="🔇 音效关闭">
+    🔇 Sound Off
+  </button>
 
-  <!-- Easter egg layer -->
-  <div id="easter-egg-layer"></div>
+  <div class="center-console">
+    <h1 class="console-name" data-en="LI CHENGXI" data-zh="李成蹊">LI CHENGXI</h1>
+    <p class="console-sub" data-en="Multiverse Resume // Dimension Browser" data-zh="多元宇宙简历 // 维度浏览器">Multiverse Resume // Dimension Browser</p>
+    <div class="console-controls">
+      <button id="lang-toggle">
+        <span class="lang-opt active" data-lang="en">EN</span>
+        <span class="lang-sep">/</span>
+        <span class="lang-opt" data-lang="zh">中文</span>
+      </button>
+    </div>
+  </div>
 
-  <main id="content">
+  <!-- 6 Portals orbiting the center -->
+  <div class="portal" data-section="hero" style="--orbit-angle: 0deg; --orbit-delay: 0s;">
+    <div class="portal-vortex"></div>
+    <span class="portal-label" data-en="📡 Identity" data-zh="📡 身份">📡 Identity</span>
+  </div>
+  <div class="portal" data-section="skills" style="--orbit-angle: 60deg; --orbit-delay: -2s;">
+    <div class="portal-vortex"></div>
+    <span class="portal-label" data-en="🧬 Skills" data-zh="🧬 能力">🧬 Skills</span>
+  </div>
+  <div class="portal" data-section="web3" style="--orbit-angle: 120deg; --orbit-delay: -4s;">
+    <div class="portal-vortex"></div>
+    <span class="portal-label" data-en="🧪 Web3 Exp" data-zh="🧪 Web3经历">🧪 Web3 Exp</span>
+  </div>
+  <div class="portal" data-section="prof" style="--orbit-angle: 180deg; --orbit-delay: -6s;">
+    <div class="portal-vortex"></div>
+    <span class="portal-label" data-en="💼 Work" data-zh="💼 工作">💼 Work</span>
+  </div>
+  <div class="portal" data-section="edu" style="--orbit-angle: 240deg; --orbit-delay: -8s;">
+    <div class="portal-vortex"></div>
+    <span class="portal-label" data-en="🎓 Education" data-zh="🎓 教育">🎓 Education</span>
+  </div>
+  <div class="portal" data-section="tools" style="--orbit-angle: 300deg; --orbit-delay: -10s;">
+    <div class="portal-vortex"></div>
+    <span class="portal-label" data-en="🛠️ Tools" data-zh="🛠️ 工具">🛠️ Tools</span>
+  </div>
+</div>
 
-    <!-- ===================== Section 1: Hero ===================== -->
-    <section id="hero" class="console-card">
-      <div class="card-corners"></div>
-      <h1 class="hero-name" data-en="LI CHENGXI" data-zh="李成蹊">LI CHENGXI</h1>
-      <p class="hero-title" data-en="Web3 Ecosystem Growth · AI-Native Operator · Bilingual BD & Support"
-         data-zh="Web3 生态增长 · AI-Native 操盘手 · 中英双语 BD & 客服">
-        Web3 Ecosystem Growth · AI-Native Operator · Bilingual BD & Support
-      </p>
-      <div class="hero-contact">
-        <span data-en="📍 Chongqing, China (Global Remote)" data-zh="📍 中国重庆（全球远程）">📍 Chongqing, China (Global Remote)</span>
-        <span>📧 lcx040210@gmail.com</span>
-        <span>📱 +86 191-3205-1589</span>
-        <span>𝕏 <a href="https://x.com/LiCheng43225380" target="_blank">@LiCheng43225380</a></span>
-        <span data-en="PTE Academic 84 (C1/C2 — IELTS 8.0+ equivalent)" data-zh="PTE Academic 84（C1/C2，相当于雅思 8.0+）">PTE Academic 84 (C1/C2 — IELTS 8.0+ equivalent)</span>
-      </div>
-      <div class="hero-summary"
-           data-en="Web3-Native Ecosystem Growth &amp; Support Specialist — 4 years on-chain across Ethereum, Base, Solana, TON, and BNB Chain.<br>Currently providing frontline customer support at KCEX Exchange. Previously ranked #1 among all BD representatives at BitTap Exchange and co-founded a 100+ member Web3 Learning Camp. Served as community admin for a contract trading group, growing it by hundreds of active users.<br>AI-native operator: proficient with web AI tools (Claude, GPT, Gemini) and terminal AI agents (Claude Code, Codex) with stable, repeatable workflows. Built multiple Web3-specific AI skills via Vibe Coding. Basic Python. ~2,000 X followers creating Web3, AI, and crypto content.<br>Bilingual CN/EN (PTE 84). Not adapting to Web3 — forged within it."
-           data-zh="Web3 原生生态增长与客服专家——4 年链上实操，深度活跃于 Ethereum、Base、Solana、TON、BNB Chain。<br>现于 KCEX 交易所提供一线客户支持。此前于 BitTap 交易所实习，BD 业绩排名第 1，联合发起 100+ 人 Web3 共学营。曾担任合约交易社群管理员，增长数百名活跃用户。<br>AI-Native 操盘手：熟练使用网页 AI（Claude、GPT、Gemini）与终端 AI Agent（Claude Code、Codex），形成稳定可复用工作流。通过 Vibe Coding 构建多个 Web3 专属 AI 技能。基础 Python。X 账户约 2,000 粉丝，专注 Web3、AI 与加密货币内容。<br>中英双语（PTE 84）。不是适应 Web3——而是在其中锻造而成。">
-        Web3-Native Ecosystem Growth & Support Specialist — 4 years on-chain across Ethereum, Base, Solana, TON, and BNB Chain.<br>Currently providing frontline customer support at KCEX Exchange. Previously ranked #1 among all BD representatives at BitTap Exchange and co-founded a 100+ member Web3 Learning Camp. Served as community admin for a contract trading group, growing it by hundreds of active users.<br>AI-native operator: proficient with web AI tools (Claude, GPT, Gemini) and terminal AI agents (Claude Code, Codex) with stable, repeatable workflows. Built multiple Web3-specific AI skills via Vibe Coding. Basic Python. ~2,000 X followers creating Web3, AI, and crypto content.<br>Bilingual CN/EN (PTE 84). Not adapting to Web3 — forged within it.
-      </div>
-    </section>
+<!-- Portal transition overlay -->
+<div id="portal-overlay"></div>
 
-    <!-- ===================== Section 2: Core Competencies ===================== -->
-    <section id="skills" class="console-card">
-      <div class="card-corners"></div>
-      <h2 class="section-title scan-line" data-en="🧬 Genetic Scan — Core Competencies" data-zh="🧬 基因扫描 — 核心能力">🧬 Genetic Scan — Core Competencies</h2>
-      <div class="skills-grid">
-        <div class="skill-panel" id="skill-languages" data-en-title="Languages & Communication" data-zh-title="语言 & 沟通">
-          <h3 data-en="🌐 Languages & Communication" data-zh="🌐 语言 & 沟通">🌐 Languages & Communication</h3>
-          <ul data-en="CN/EN Bilingual (PTE 84)|Cross-Cultural Collaboration|Technical Content Localization|300+ hrs English Instruction"
-              data-zh="中英双语（PTE 84）|跨文化协作|技术内容本地化|300+ 小时英语教学"></ul>
-        </div>
-        <div class="skill-panel" id="skill-web3" data-en-title="Web3 Ecosystem" data-zh-title="Web3 生态">
-          <h3 data-en="⛓️ Web3 Ecosystem" data-zh="⛓️ Web3 生态">⛓️ Web3 Ecosystem</h3>
-          <ul data-en="Multi-chain DeFi/NFT/Social|Exchange Affiliate Systems|Smart Contracts & On-chain TX|Wallet Security & On-chain Safety"
-              data-zh="多链 DeFi/NFT/Social|交易所代理体系|智能合约与链上交互|钱包安全与链上安全"></ul>
-        </div>
-        <div class="skill-panel" id="skill-bd" data-en-title="BD & Growth" data-zh-title="BD & 增长">
-          <h3 data-en="📈 BD & Growth" data-zh="📈 BD & 增长">📈 BD & Growth</h3>
-          <ul data-en="User Acquisition & Conversion|Community Building & Engagement|KOL/Community Relations|Campaign Strategy & Execution"
-              data-zh="用户获取与转化|社区建设与运营|KOL/社区关系|活动策略与执行"></ul>
-        </div>
-        <div class="skill-panel" id="skill-ai" data-en-title="AI & Development" data-zh-title="AI & 开发">
-          <h3 data-en="🤖 AI & Development" data-zh="🤖 AI & 开发">🤖 AI & Development</h3>
-          <ul data-en="Web & Terminal AI Agents|Prompt Engineering (Expert)|Vibe Coding · Web3 AI Skills|Basic Python · Stable AI Workflow"
-              data-zh="网页 & 终端 AI Agent|Prompt 工程（精通）|Vibe Coding · Web3 技能|基础 Python · 稳定 AI 工作流"></ul>
-        </div>
-        <div class="skill-panel" id="skill-analysis" data-en-title="Analysis & Research" data-zh-title="分析 & 研究">
-          <h3 data-en="📊 Analysis & Research" data-zh="📊 分析 & 研究">📊 Analysis & Research</h3>
-          <ul data-en="Project Research & Evaluation|Tokenomics & Mechanism Analysis|Market Trend Research|Excel Data Analytics"
-              data-zh="项目研究与评估|代币经济与机制分析|市场趋势研究|Excel 数据分析"></ul>
-        </div>
-      </div>
-    </section>
+<!-- ==================== CONTENT OVERLAYS ==================== -->
+<div id="content-overlays">
 
-    <!-- ===================== Section 3: Web3 Experience ===================== -->
-    <section id="web3-experience">
-      <h2 class="section-title scan-line" data-en="🧪 Lab Log — Web3 Experience" data-zh="🧪 实验日志 — Web3 经历">🧪 Lab Log — Web3 Experience</h2>
-
-      <div class="timeline">
-
-        <div class="timeline-item console-card" id="exp-kcex">
-          <div class="card-corners"></div>
-          <div class="exp-header">
-            <h3 data-en="KCEX Exchange — Customer Support Specialist" data-zh="KCEX 交易所 — 客服专员">KCEX Exchange — Customer Support Specialist</h3>
-            <span class="exp-date" data-en="Jul 2026 – Present · Remote" data-zh="2026.07 – 至今 · 远程">Jul 2026 – Present · Remote</span>
-          </div>
-          <ul class="exp-bullets"
-              data-en="🎧 Delivering frontline customer support for a global exchange — handling account, deposit/withdrawal, spot trading, and platform inquiries via live chat, ticket systems, and community channels.|🔄 Managing cross-cultural user interactions across multiple regions and time zones, resolving issues from transaction delays to KYC verification and security concerns.|📋 Building firsthand understanding of exchange user pain points, FAQ patterns, and resolution workflows — layering operational support expertise on top of prior BD experience.|🛡️ Translating complex blockchain concepts (confirmations, gas fees, contract interactions) into clear, accessible guidance for users of all experience levels."
-              data-zh="🎧 为全球化交易所提供一线客户支持——通过在线聊天、工单系统和社群渠道处理账户、充提币、现货交易及平台操作问题。|🔄 管理跨文化用户互动，覆盖多个地区和时区，解决从交易延迟到 KYC 验证、安全疑虑等各类问题。|📋 积累对交易所用户痛点、FAQ 模式及解决路径的第一手理解——在 BD 经验上叠加运营支持视角。|🛡️ 将复杂区块链概念（确认数、Gas 费、合约交互）转化为各层级用户都能理解的清晰指引。"></ul>
-        </div>
-
-        <div class="timeline-item console-card" id="exp-bittap">
-          <div class="card-corners"></div>
-          <div class="exp-header">
-            <h3 data-en="BitTap Exchange — Certified Affiliate Agent & BD Representative" data-zh="BitTap 交易所 — 认证代理商 & BD 代表">BitTap Exchange — Certified Affiliate Agent & BD Representative</h3>
-            <span class="exp-date" data-en="May 2026 – Jul 2026 | Remote" data-zh="2026.05 – 2026.07 | 远程">May 2026 – Jul 2026 | Remote</span>
-          </div>
-          <ul class="exp-bullets"
-              data-en="🏆 **Ranked #1 among all BD representatives** during internship; consistently top-tier in user acquisition and community engagement.|🤝 Co-founded the **BitTap Web3 Learning Camp** — recruited, onboarded, and managed 100+ members through end-to-end engagement programming and retention strategies.|💬 Primary point of contact for global users across multiple regions, handling account, deposit, spot/futures trading, and withdrawal inquiries.|💰 Accumulated **500,000+ USDT** in futures trading volume; mastered exchange affiliate commissions, profit-sharing, and channel incentive structures."
-              data-zh="🏆 **实习期间 BD 业绩排名小组第 1**；用户获取与社区互动指标持续名列前茅。|🤝 联合发起 **BitTap Web3 共学营**——招募、引导并管理 100+ 名学员，负责端到端互动策划与留存策略。|💬 担任全球用户主要联络人，处理账户、充值、现货/合约交易、提现等多类问题。|💰 累计 **50 万+ USDT** 合约交易量；掌握交易所返佣体系、用户分润机制与渠道激励结构。"></ul>
-        </div>
-
-        <div class="timeline-item console-card" id="exp-contract-community">
-          <div class="card-corners"></div>
-          <div class="exp-header">
-            <h3 data-en="Contract Trading Community — Community Admin & Growth Lead" data-zh="合约带单社群 — 社群管理员 & 增长负责人">Contract Trading Community — Community Admin & Growth Lead</h3>
-            <span class="exp-date" data-en="May 2026 – Jul 2026 | Telegram / Discord (Concurrent with BitTap)" data-zh="2026.05 – 2026.07 | Telegram / Discord（与 BitTap 同期）">May 2026 – Jul 2026 | Telegram / Discord (Concurrent with BitTap)</span>
-          </div>
-          <ul class="exp-bullets"
-              data-en="👥 Community administrator for a contract trading signal group — daily operations, content distribution, and community atmosphere management.|📈 Grew the community by **hundreds of active users** through organic outreach, word-of-mouth referrals, and targeted invitations.|🎯 Curated trading signals, market analysis, and educational content — driving member engagement, retention, and improved trading outcomes.|🛡️ Enforced community standards, resolved conflicts, and maintained high signal-to-noise ratio.|💡 Synthesized member feedback into actionable improvements for community offerings."
-              data-zh="👥 合约交易信号群管理员——日常运营、内容分发与社区氛围维护。|📈 通过自然裂变、口碑传播与定向邀请，增长**数百名活跃用户**。|🎯 策划分发交易信号、行情分析与教育内容——驱动成员互动、留存与交易水平提升。|🛡️ 执行社群规范，调解纠纷，维持高信噪比。|💡 整合成员反馈，提炼可执行的社群优化建议。"></ul>
-        </div>
-
-        <div class="timeline-item console-card" id="exp-community-growth">
-          <div class="card-corners"></div>
-          <div class="exp-header">
-            <h3 data-en="Community Growth & User Acquisition" data-zh="社区增长 & 用户引导">Community Growth & User Acquisition</h3>
-            <span class="exp-date" data-en="2023 – Present | Multi-Chain" data-zh="2023 – 至今 | 多链">2023 – Present | Multi-Chain</span>
-          </div>
-          <ul class="exp-bullets"
-              data-en="🧑‍🏫 Personally onboarded **10+ newcomers** into Web3 with end-to-end guidance — wallet setup, exchange registration, on-chain interactions — most remain active today.|🐊 Active contributor in HyperCroc (HyperLiquid DeFi protocol); identified and reported a **Guild system bug that was acknowledged and fixed** by the core team.|🌱 Embedded in early-stage project communities (Yom, Mememax), building cross-project networks and real-time information channels."
-              data-zh="🧑‍🏫 手把手引导 **10+ 名新人**进入 Web3——钱包、交易所、链上交互全流程——多数保持活跃。|🐊 在 HyperCroc（HyperLiquid DeFi 协议）社区活跃贡献；发现并反馈 **Guild 系统 Bug 被项目方采纳修复**。|🌱 深度嵌入 Yom、Mememax 等早期项目社区，构建跨项目生态网络与实时信息渠道。"></ul>
-        </div>
-
-        <div class="timeline-item console-card" id="exp-research">
-          <div class="card-corners"></div>
-          <div class="exp-header">
-            <h3 data-en="Ecosystem Research & Content Creation" data-zh="生态研究 & 内容输出">Ecosystem Research & Content Creation</h3>
-            <span class="exp-date" data-en="2025 – Present | X (Twitter) — ~2,000 Followers & Growing" data-zh="2025 – 至今 | X（Twitter）— 约 2,000 粉丝，稳定增长">2025 – Present | X (Twitter) — ~2,000 Followers & Growing</span>
-          </div>
-          <ul class="exp-bullets"
-              data-en="✍️ Built an engaged audience through consistent content on **Web3 ecosystem analysis, AI tools & workflows, and crypto market insights**.|📝 Authored **5+ research threads** (HyperCroc, Termmax) covering mechanism breakdowns, interaction tutorials, and participation strategies — from research to AI-assisted drafting to distribution.|🛡️ Assesses **contract security, tokenomics models, liquidity structures, and community consensus** at a foundational level."
-              data-zh="✍️ 通过持续输出 **Web3 生态分析、AI 工具教程、加密货币市场洞察**积累忠实受众。|📝 撰写 **5+ 篇投研长文**（HyperCroc、Termmax）——从研究到 AI 辅助撰写到分发，机制拆解、交互教程与参与策略全覆盖。|🛡️ 具备合约安全性、代币经济模型、流动性结构与社区共识的初步评估能力。"></ul>
-        </div>
-
-        <div class="timeline-item console-card" id="exp-testnet">
-          <div class="card-corners"></div>
-          <div class="exp-header">
-            <h3 data-en="Testnet & Early-Stage Ecosystem Participation" data-zh="测试网 & 早期生态参与">Testnet & Early-Stage Ecosystem Participation</h3>
-            <span class="exp-date" data-en="2024 – Present | 10+ Projects" data-zh="2024 – 至今 | 10+ 项目">2024 – Present | 10+ Projects</span>
-          </div>
-          <ul class="exp-bullets"
-              data-en="🧪 Participated in **Irys** (Arweave L1, $20M Framework Ventures-led), Ralys, and 8+ other testnet campaigns.|🎨 OpenSea creator & trader · Farcaster early adopter · Galxe verified identity holder.|🎮 Early TON ecosystem participant — **Notcoin, Cati, Blum, Memefi** — deep understanding of viral growth mechanics."
-              data-zh="🧪 参与 **Irys**（Arweave L1，Framework Ventures 领投 $2000 万）、Ralys 等 10+ 测试网活动。|🎨 OpenSea 创作者与交易者 · Farcaster 早期用户 · Galxe 已验证身份持有者。|🎮 TON 生态头部项目早期参与者——**Notcoin、Cati、Blum、Memefi**——深入理解病毒式增长机制。"></ul>
-        </div>
-
-        <div class="timeline-item console-card" id="exp-ai">
-          <div class="card-corners"></div>
-          <div class="exp-header">
-            <h3 data-en="AI Mastery & Independent Development" data-zh="AI 精通 & 独立开发">AI Mastery & Independent Development</h3>
-            <span class="exp-date" data-en="2025 – Present" data-zh="2025 – 至今">2025 – Present</span>
-          </div>
-          <ul class="exp-bullets"
-              data-en="🤖 **Dual AI Workflow**: Proficient with web AI (Claude, GPT, Gemini) for research/content and terminal AI agents (Claude Code, Codex) for development/automation — seamless switching by task.|🔧 **Prompt Engineering Expert**: Chain-of-thought reasoning, multi-turn strategies, context management — maximizing output across coding, content, research, and data analysis.|🛠️ **Vibe Coding × Web3 Skills**: Built multiple Web3-specific AI skills (automated workflows, research agents, content generators) — AI as a force multiplier.|🐍 **Basic Python**: Write, read, and debug scripts for automation, data processing, and API interaction.|⚡ **Stable AI Workflow**: Mature pipeline — web AI (research → outline → draft) → terminal AI (code → debug → deploy) → review — delivering at 3–5× solo speed."
-              data-zh="🤖 **双轨 AI 工作流**：熟练使用网页 AI（Claude、GPT、Gemini）进行研究与内容创作，终端 AI Agent（Claude Code、Codex）进行开发与自动化——按任务需求无缝切换。|🔧 **Prompt 工程专家**：思维链推理、多轮对话策略、上下文管理——在编程、内容、研究、数据分析场景中最大化输出质量。|🛠️ **Vibe Coding × Web3 技能**：构建多个 Web3 专属 AI 技能（自动化工作流、研究 Agent、内容生成器）——AI 作为力量倍增器。|🐍 **基础 Python**：能写能读能调试，足以完成自动化、数据处理与 API 交互。|⚡ **稳定 AI 工作流**：成熟管线——网页 AI（研究→大纲→初稿）→ 终端 AI（代码→调试→部署）→ 审核——以 3–5 倍单人速度交付。"></ul>
-        </div>
-
-      </div>
-    </section>
-
-    <!-- ===================== Section 4: Professional Experience ===================== -->
-    <section id="professional-experience">
-      <h2 class="section-title scan-line" data-en="📋 Cross-Dimensional Experience" data-zh="📋 跨维度经验">📋 Cross-Dimensional Experience</h2>
-
-      <div class="timeline">
-
-        <div class="timeline-item console-card" id="exp-jingyu">
-          <div class="card-corners"></div>
-          <div class="exp-header">
-            <h3 data-en="Jingyu Asset Management (Shanghai) — Buy-Side Analyst Intern" data-zh="鲸域资产管理（上海）— 买方分析师（实习）">Jingyu Asset Management (Shanghai) — Buy-Side Analyst Intern</h3>
-            <span class="exp-date" data-en="Jun 2024 – Sep 2024 | Shanghai" data-zh="2024.06 – 2024.09 | 上海">Jun 2024 – Sep 2024 | Shanghai</span>
-          </div>
-          <ul class="exp-bullets"
-              data-en="Conducted equity research and industry trend analysis, supporting investment decisions with data-driven reports.|Authored market monitoring reports; streamlined Excel workflows, **reducing processing time by 15%**.|Built institutional-grade research methodology and risk assessment frameworks transferable to crypto project evaluation."
-              data-zh="完成证券研究与行业趋势分析，以数据驱动报告支持投资决策。|撰写市场监控报告；优化 Excel 工作流，**减少处理时间 15%**。|建立了可迁移至加密项目评估的机构级研究方法与风险评估框架。"></ul>
-        </div>
-
-        <div class="timeline-item console-card" id="exp-seller">
-          <div class="card-corners"></div>
-          <div class="exp-header">
-            <h3 data-en="Independent Online Seller — Luxury Goods & Sportswear" data-zh="独立电商卖家 — 奢侈品 & 运动服饰">Independent Online Seller — Luxury Goods & Sportswear</h3>
-            <span class="exp-date" data-en="Aug 2022 – May 2023 | WeChat / Taobao / Xianyu" data-zh="2022.08 – 2023.05 | 微信 / 淘宝 / 闲鱼">Aug 2022 – May 2023 | WeChat / Taobao / Xianyu</span>
-          </div>
-          <ul class="exp-bullets"
-              data-en="Built and operated a P2P resale business at age 19, completing **300+ transactions** with full lifecycle management — sourcing, pricing, fulfillment, after-sales.|Negotiated with **100+ unique buyers**, maintaining high ratings and repeat purchase rates — real negotiation and counterparty assessment skills transferable to BD/partnerships."
-              data-zh="19 岁独立运营 P2P 转售业务，完成 **300+ 笔交易**，全流程管理——选品、定价、发货、售后。|与 **100+ 名买家**一对一沟通议价，维持高好评率与复购率——可迁移至 BD/合作的真实谈判与对手方评估能力。"></ul>
-        </div>
-
-        <div class="timeline-item console-card" id="exp-teacher">
-          <div class="card-corners"></div>
-          <div class="exp-header">
-            <h3 data-en="Online (Part-Time) — English Teacher (PTE / IELTS / Exam Preparation)" data-zh="线上（兼职）— 英语教师（PTE / 雅思 / 应试英语）">Online (Part-Time) — English Teacher (PTE / IELTS / Exam Preparation)</h3>
-            <span class="exp-date" data-en="May 2023 – Present | Remote" data-zh="2023.05 – 至今 | 远程">May 2023 – Present | Remote</span>
-          </div>
-          <ul class="exp-bullets"
-              data-en="Coached **10+ students** across all age groups, accumulating **300+ hours** of English output — multiple students achieved 15–30 point improvements.|Breaking down complex concepts into clear explanations — directly applicable to Web3 user education and community onboarding."
-              data-zh="辅导 **10+ 名学生**，积累 **300+ 小时**英语输出——多名学生实现 15–30 分提分。|将复杂概念拆解为清晰讲解——直接适用于 Web3 用户教育与社区引导。"></ul>
-        </div>
-
-        <div class="timeline-item console-card" id="exp-annotation">
-          <div class="card-corners"></div>
-          <div class="exp-header">
-            <h3 data-en="AI Data Annotation Specialist (Part-Time)" data-zh="AI 数据标注专员（兼职）">AI Data Annotation Specialist (Part-Time)</h3>
-            <span class="exp-date" data-en="Jul 2023 – Sep 2023 | Remote" data-zh="2023.07 – 2023.09 | 远程">Jul 2023 – Sep 2023 | Remote</span>
-          </div>
-          <ul class="exp-bullets"
-              data-en="Completed **thousands of text annotation tasks** with high accuracy; reviewed edge cases to improve labeling guidelines — developed strong attention to detail and understanding of AI training pipelines."
-              data-zh="完成 **数千条文本标注任务**，保持高准确率；审核边缘样本优化标注规范——培养了细节关注力与对 AI 训练管线的理解。"></ul>
-        </div>
-
-      </div>
-    </section>
-
-    <!-- ===================== Section 5: Education, Languages & Tools ===================== -->
-    <section id="education-languages" class="two-col">
-
-      <div class="console-card" id="education-card">
+  <!-- Hero / Identity -->
+  <div class="overlay-panel" id="overlay-hero">
+    <button class="back-btn" data-en="🌀 Back to Hub" data-zh="🌀 返回控制台">🌀 Back to Hub</button>
+    <div class="overlay-scroll">
+      <div class="console-card">
         <div class="card-corners"></div>
-        <h2 class="section-title" data-en="🎓 Lab Credentials" data-zh="🎓 实验室证书">🎓 Lab Credentials</h2>
-
-        <div class="edu-block">
-          <h3 data-en="🏛️ Chongqing University (重庆大学)" data-zh="🏛️ 重庆大学">🏛️ Chongqing University (重庆大学)</h3>
-          <p class="edu-sub" data-en="Top-30 Chinese University (National Key University)" data-zh="全国前 30 高校（国家重点大学）">Top-30 Chinese University (National Key University)</p>
-          <p data-en="Bachelor of Public Administration | Sep 2022 – Jun 2026 | Chongqing, China" data-zh="公共管理学院 本科 | 2022.09 – 2026.06 | 中国重庆">Bachelor of Public Administration | Sep 2022 – Jun 2026 | Chongqing, China</p>
-          <p class="edu-note"
-             data-en="Graduated June 2026. Balanced full-time academics while simultaneously building 4 years of Web3 expertise, teaching English, running an independent business, and delivering AI-powered projects."
-             data-zh="已于 2026 年 6 月毕业。在校期间同时并行构建 4 年 Web3 专业知识、兼职英语教学、独立经营电商、交付 AI 驱动项目。">
-            Graduated June 2026. Balanced full-time academics while simultaneously building 4 years of Web3 expertise, teaching English, running an independent business, and delivering AI-powered projects.
-          </p>
+        <h2 class="scan-line" data-en="📡 Identity Scan" data-zh="📡 身份扫描">📡 Identity Scan</h2>
+        <div class="hero-summary" data-en="Web3-Native Ecosystem Growth &amp; Support Specialist — 4 years on-chain across Ethereum, Base, Solana, TON, and BNB Chain.<br><br>Currently providing frontline customer support at <strong>KCEX Exchange</strong>. Previously ranked <strong>#1 among all BD representatives</strong> at BitTap Exchange and co-founded a <strong>100+ member Web3 Learning Camp</strong>. Served as community admin for a contract trading group, growing it by <strong>hundreds of active users</strong>.<br><br><strong>AI-native operator</strong>: proficient with web AI tools (Claude, GPT, Gemini) and terminal AI agents (Claude Code, Codex) with stable workflows. Built multiple Web3-specific AI skills via Vibe Coding. Basic Python. <strong>~2,000 X followers</strong> creating Web3, AI, and crypto content.<br><br>Bilingual CN/EN (PTE 84). Not adapting to Web3 — forged within it." data-zh="Web3 原生生态增长与客服专家——4 年链上实操，深度活跃于 Ethereum、Base、Solana、TON、BNB Chain。<br><br>现于 <strong>KCEX 交易所</strong>提供一线客户支持。此前于 BitTap 交易所实习，<strong>BD 业绩排名第 1</strong>，联合发起 <strong>100+ 人 Web3 共学营</strong>。曾担任合约交易社群管理员，增长<strong>数百名活跃用户</strong>。<br><br><strong>AI-Native 操盘手</strong>：熟练使用网页 AI（Claude、GPT、Gemini）与终端 AI Agent（Claude Code、Codex），形成稳定可复用工作流。通过 Vibe Coding 构建多个 Web3 专属 AI 技能。基础 Python。<strong>X 账户约 2,000 粉丝</strong>，专注 Web3、AI 与加密货币内容。<br><br>中英双语（PTE 84）。不是适应 Web3——而是在其中锻造而成。"></div>
+        <div class="contact-strip">
+          <span>📍 Chongqing, China (Remote)</span>
+          <span>📧 lcx040210@gmail.com</span>
+          <span>📱 +86 191-3205-1589</span>
+          <span>𝕏 @LiCheng43225380</span>
+          <span>PTE Academic 84</span>
         </div>
+      </div>
+    </div>
+  </div>
 
-        <div class="lang-block">
-          <h3 data-en="🌐 Languages & Certifications" data-zh="🌐 语言 & 认证">🌐 Languages & Certifications</h3>
-          <table class="certs-table">
-            <thead>
-              <tr>
-                <th data-en="Qualification" data-zh="资格">Qualification</th>
-                <th data-en="Score / Level" data-zh="分数/等级">Score / Level</th>
-                <th data-en="Notes" data-zh="备注">Notes</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td data-en="PTE Academic" data-zh="PTE Academic">PTE Academic</td>
-                <td data-en="84 Overall" data-zh="84 总分">84 Overall</td>
-                <td data-en="C1/C2 — Equivalent to IELTS 8.0+" data-zh="C1/C2 — 相当于雅思 8.0+">C1/C2 — Equivalent to IELTS 8.0+</td>
-              </tr>
-              <tr>
-                <td data-en="CET-6" data-zh="CET-6（六级）">CET-6</td>
-                <td>566</td>
-                <td data-en="National College English Test Band 6" data-zh="全国大学英语六级考试">National College English Test Band 6</td>
-              </tr>
-              <tr>
-                <td data-en="CET-4" data-zh="CET-4（四级）">CET-4</td>
-                <td>590</td>
-                <td data-en="National College English Test Band 4" data-zh="全国大学英语四级考试">National College English Test Band 4</td>
-              </tr>
-              <tr>
-                <td data-en="Chinese" data-zh="中文">Chinese</td>
-                <td data-en="Native" data-zh="母语">Native</td>
-                <td data-en="Mandarin (Simplified & Traditional)" data-zh="普通话（简体 & 繁体）">Mandarin (Simplified & Traditional)</td>
-              </tr>
-              <tr>
-                <td data-en="English" data-zh="英语">English</td>
-                <td data-en="Professional Working Proficiency" data-zh="专业工作水平">Professional Working Proficiency</td>
-                <td data-en="Daily working language — written & spoken" data-zh="日常使用语言——书面 & 口语">Daily working language — written & spoken</td>
-              </tr>
-            </tbody>
+  <!-- Skills -->
+  <div class="overlay-panel" id="overlay-skills">
+    <button class="back-btn" data-en="🌀 Back to Hub" data-zh="🌀 返回控制台">🌀 Back to Hub</button>
+    <div class="overlay-scroll">
+      <div class="console-card">
+        <div class="card-corners"></div>
+        <h2 class="scan-line" data-en="🧬 Genetic Scan" data-zh="🧬 基因扫描">🧬 Genetic Scan</h2>
+        <div class="skills-grid">
+          <div class="skill-panel"><h3 data-en="🌐 Languages" data-zh="🌐 语言">🌐 Languages</h3><ul data-en="CN/EN Bilingual (PTE 84)|Cross-Cultural Collaboration|Technical Localization|300+ hrs Instruction" data-zh="中英双语（PTE 84）|跨文化协作|技术本地化|300+ 小时教学"></ul></div>
+          <div class="skill-panel"><h3 data-en="⛓️ Web3 Ecosystem" data-zh="⛓️ Web3 生态">⛓️ Web3 Ecosystem</h3><ul data-en="Multi-chain DeFi/NFT/Social|Exchange Affiliate Systems|Smart Contracts & On-chain TX|Wallet & On-chain Security" data-zh="多链 DeFi/NFT/Social|交易所代理体系|智能合约与链上交互|钱包与链上安全"></ul></div>
+          <div class="skill-panel"><h3 data-en="📈 BD & Growth" data-zh="📈 BD & 增长">📈 BD & Growth</h3><ul data-en="User Acquisition & Conversion|Community Building|KOL/Community Relations|Campaign Strategy" data-zh="用户获取与转化|社区建设|KOL/社区关系|活动策略"></ul></div>
+          <div class="skill-panel"><h3 data-en="🤖 AI & Dev" data-zh="🤖 AI & 开发">🤖 AI & Dev</h3><ul data-en="Web & Terminal AI Agents|Prompt Engineering (Expert)|Vibe Coding · Web3 Skills|Basic Python · AI Workflow" data-zh="网页 & 终端 AI Agent|Prompt 工程（精通）|Vibe Coding · Web3 技能|基础 Python · AI 工作流"></ul></div>
+          <div class="skill-panel"><h3 data-en="📊 Analysis" data-zh="📊 分析">📊 Analysis</h3><ul data-en="Project Research & Evaluation|Tokenomics & Mechanism|Market Trend Analysis|Excel Data Analytics" data-zh="项目研究与评估|代币经济与机制|市场趋势分析|Excel 数据分析"></ul></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Web3 Experience -->
+  <div class="overlay-panel" id="overlay-web3">
+    <button class="back-btn" data-en="🌀 Back to Hub" data-zh="🌀 返回控制台">🌀 Back to Hub</button>
+    <div class="overlay-scroll">
+      <h2 class="scan-line" data-en="🧪 Lab Log — Web3 Experience" data-zh="🧪 实验日志 — Web3 经历">🧪 Lab Log — Web3 Experience</h2>
+      <div class="timeline">
+        <div class="timeline-item console-card"><div class="card-corners"></div><div class="exp-header"><h3 data-en="KCEX Exchange — Customer Support" data-zh="KCEX 交易所 — 客服专员">KCEX Exchange — Customer Support</h3><span class="exp-date" data-en="Jul 2026 – Present" data-zh="2026.07 – 至今">Jul 2026 – Present</span></div><ul class="exp-bullets" data-en="Delivering frontline support for global exchange users via live chat and ticket systems|Managing cross-cultural interactions across multiple regions and time zones|Building firsthand understanding of exchange user pain points and resolution workflows|Translating complex blockchain concepts into clear guidance for all experience levels" data-zh="通过在线聊天和工单系统为全球用户提供一线支持|管理跨地区跨时区的跨文化用户互动|积累对交易所用户痛点和解决路径的第一手理解|将复杂区块链概念转化为各层级用户的清晰指引"></ul></div>
+        <div class="timeline-item console-card"><div class="card-corners"></div><div class="exp-header"><h3 data-en="BitTap Exchange — BD Representative" data-zh="BitTap 交易所 — BD 代表">BitTap Exchange — BD Representative</h3><span class="exp-date" data-en="May – Jul 2026" data-zh="2026.05 – 2026.07">May – Jul 2026</span></div><ul class="exp-bullets" data-en="**Ranked #1 among all BD representatives** during internship|Co-founded BitTap Web3 Learning Camp — recruited and managed **100+ members**|Primary contact for global users across multiple regions|Accumulated **500,000+ USDT** in futures trading volume" data-zh="**实习期间 BD 业绩排名小组第 1**|联合发起 BitTap Web3 共学营——招募管理 **100+ 名学员**|担任全球用户主要联络人|累计 **50 万+ USDT** 合约交易量"></ul></div>
+        <div class="timeline-item console-card"><div class="card-corners"></div><div class="exp-header"><h3 data-en="Contract Trading Community — Admin" data-zh="合约带单社群 — 管理员">Contract Trading Community — Admin</h3><span class="exp-date" data-en="May – Jul 2026" data-zh="2026.05 – 2026.07">May – Jul 2026</span></div><ul class="exp-bullets" data-en="Community admin for contract trading signal group|Grew community by **hundreds of active users**|Curated trading signals, analysis, and educational content|Enforced community standards and maintained high signal-to-noise ratio" data-zh="合约交易信号群管理员|增长**数百名活跃用户**|策划分发交易信号、分析与教育内容|执行社群规范，维持高信噪比"></ul></div>
+        <div class="timeline-item console-card"><div class="card-corners"></div><div class="exp-header"><h3 data-en="Community Growth & Onboarding" data-zh="社区增长 & 用户引导">Community Growth & Onboarding</h3><span class="exp-date" data-en="2023 – Present" data-zh="2023 – 至今">2023 – Present</span></div><ul class="exp-bullets" data-en="Personally onboarded **10+ newcomers** into Web3 end-to-end|Active in HyperCroc — reported **Guild bug acknowledged and fixed** by core team|Embedded in Yom, Mememax early-stage communities" data-zh="手把手引导 **10+ 名新人**进入 Web3|在 HyperCroc 活跃——反馈 **Guild 系统 Bug 被采纳修复**|深度嵌入 Yom、Mememax 早期社区"></ul></div>
+        <div class="timeline-item console-card"><div class="card-corners"></div><div class="exp-header"><h3 data-en="Research & Content — ~2K X Followers" data-zh="研究 & 内容 — 约 2K X 粉丝">Research & Content — ~2K X Followers</h3><span class="exp-date" data-en="2025 – Present" data-zh="2025 – 至今">2025 – Present</span></div><ul class="exp-bullets" data-en="**5+ research threads** on HyperCroc, Termmax|Assesses contract security, tokenomics, liquidity, consensus|Content: Web3 analysis, AI workflows, crypto insights" data-zh="**5+ 篇投研长文**（HyperCroc、Termmax）|评估合约安全、代币经济、流动性、共识|内容：Web3 分析、AI 工作流、加密货币洞察"></ul></div>
+        <div class="timeline-item console-card"><div class="card-corners"></div><div class="exp-header"><h3 data-en="Testnet & Ecosystem — 10+ Projects" data-zh="测试网 & 生态 — 10+ 项目">Testnet & Ecosystem — 10+ Projects</h3><span class="exp-date" data-en="2024 – Present" data-zh="2024 – 至今">2024 – Present</span></div><ul class="exp-bullets" data-en="Irys (Arweave L1, $20M raise), Ralys, 8+ testnets|OpenSea creator · Farcaster early adopter · Galxe verified|TON early: **Notcoin, Cati, Blum, Memefi**" data-zh="Irys（Arweave L1，$2000万融资）、Ralys 等 10+ 测试网|OpenSea 创作者 · Farcaster 早期用户 · Galxe 已验证|TON 生态早期：**Notcoin、Cati、Blum、Memefi**"></ul></div>
+        <div class="timeline-item console-card"><div class="card-corners"></div><div class="exp-header"><h3 data-en="AI Mastery — Dual Workflow" data-zh="AI 精通 — 双轨工作流">AI Mastery — Dual Workflow</h3><span class="exp-date" data-en="2025 – Present" data-zh="2025 – 至今">2025 – Present</span></div><ul class="exp-bullets" data-en="Web AI (Claude, GPT, Gemini) + Terminal agents (Claude Code, Codex)|**Prompt Engineering Expert** — chain-of-thought, multi-turn|Built **multiple Web3 AI skills** via Vibe Coding|**Basic Python** scripts for automation and data processing" data-zh="网页 AI（Claude、GPT、Gemini）+ 终端 Agent（Claude Code、Codex）|**Prompt 工程专家**——思维链、多轮对话策略|通过 Vibe Coding 构建**多个 Web3 AI 技能**|**基础 Python** 脚本用于自动化和数据处理"></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Professional Experience -->
+  <div class="overlay-panel" id="overlay-prof">
+    <button class="back-btn" data-en="🌀 Back to Hub" data-zh="🌀 返回控制台">🌀 Back to Hub</button>
+    <div class="overlay-scroll">
+      <h2 class="scan-line" data-en="💼 Cross-Dimensional Work" data-zh="💼 跨维度工作">💼 Cross-Dimensional Work</h2>
+      <div class="timeline">
+        <div class="timeline-item console-card"><div class="card-corners"></div><div class="exp-header"><h3 data-en="Jingyu Asset Mgmt — Buy-Side Analyst" data-zh="鲸域资产管理 — 买方分析师">Jingyu Asset Mgmt — Buy-Side Analyst</h3><span class="exp-date" data-en="Jun – Sep 2024" data-zh="2024.06 – 2024.09">Jun – Sep 2024</span></div><ul class="exp-bullets" data-en="Equity research and industry trend analysis for investment decisions|Authored market reports; reduced data processing time by **15%**|Institutional research methodology transferable to crypto evaluation" data-zh="证券研究与行业趋势分析，支持投资决策|撰写市场报告；减少数据处理时间 **15%**|可迁移至加密评估的机构级研究方法"></ul></div>
+        <div class="timeline-item console-card"><div class="card-corners"></div><div class="exp-header"><h3 data-en="Independent Seller — 300+ Transactions" data-zh="独立电商 — 300+ 笔交易">Independent Seller — 300+ Transactions</h3><span class="exp-date" data-en="Aug 2022 – May 2023" data-zh="2022.08 – 2023.05">Aug 2022 – May 2023</span></div><ul class="exp-bullets" data-en="Self-built P2P resale business at age 19 — full lifecycle management|Negotiated with **100+ unique buyers**, high ratings & repeat rates|Real negotiation and counterparty assessment skills → BD/partnerships" data-zh="19 岁独立运营 P2P 转售业务——全流程管理|与 **100+ 买家**一对一议价，高好评率|真实谈判与对手方评估能力 → BD/合作"></ul></div>
+        <div class="timeline-item console-card"><div class="card-corners"></div><div class="exp-header"><h3 data-en="English Teacher — 300+ Hours" data-zh="英语教师 — 300+ 小时">English Teacher — 300+ Hours</h3><span class="exp-date" data-en="May 2023 – Present" data-zh="2023.05 – 至今">May 2023 – Present</span></div><ul class="exp-bullets" data-en="Coached **10+ students** with **15–30 point improvements**|Breaking complex concepts into clear explanations → user education" data-zh="辅导 **10+ 名学生**，实现 **15–30 分提分**|复杂概念拆解 → Web3 用户教育"></ul></div>
+        <div class="timeline-item console-card"><div class="card-corners"></div><div class="exp-header"><h3 data-en="AI Data Annotation — Thousands of Tasks" data-zh="AI 数据标注 — 数千条任务">AI Data Annotation — Thousands of Tasks</h3><span class="exp-date" data-en="Jul – Sep 2023" data-zh="2023.07 – 2023.09">Jul – Sep 2023</span></div><ul class="exp-bullets" data-en="Thousands of text annotation tasks with high accuracy|Reviewed edge cases → improved labeling guidelines|Understanding of AI training pipelines and data quality" data-zh="数千条文本标注任务，高准确率|审核边缘样本，优化标注规范|理解 AI 训练管线与数据质量"></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Education & Languages -->
+  <div class="overlay-panel" id="overlay-edu">
+    <button class="back-btn" data-en="🌀 Back to Hub" data-zh="🌀 返回控制台">🌀 Back to Hub</button>
+    <div class="overlay-scroll">
+      <h2 class="scan-line" data-en="🎓 Lab Credentials" data-zh="🎓 实验室证书">🎓 Lab Credentials</h2>
+      <div class="two-col">
+        <div class="console-card"><div class="card-corners"></div>
+          <h3 data-en="🏫 Education" data-zh="🏫 教育">🏫 Education</h3>
+          <p><strong data-en="Chongqing University" data-zh="重庆大学">Chongqing University</strong> <span data-en="(Top-30, National Key)" data-zh="（前30，国家重点）">(Top-30, National Key)</span></p>
+          <p data-en="B.A. Public Administration · 2022–2026" data-zh="公共管理学士 · 2022–2026">B.A. Public Administration · 2022–2026</p>
+          <p class="edu-note" data-en="Graduated June 2026. Balanced full-time academics while building 4 years of Web3 expertise, teaching English, running a business, and delivering AI projects." data-zh="2026年6月毕业。在校期间并行构建4年Web3专业知识、英语教学、电商运营与AI项目交付。">Graduated June 2026.</p>
+        </div>
+        <div class="console-card"><div class="card-corners"></div>
+          <h3 data-en="📜 Languages" data-zh="📜 语言">📜 Languages</h3>
+          <table class="lang-table">
+            <tr><td data-en="PTE Academic" data-zh="PTE 学术英语">PTE Academic</td><td><strong>84</strong> <span data-en="(C1/C2)" data-zh="（C1/C2）">(C1/C2)</span></td></tr>
+            <tr><td data-en="CET-6" data-zh="英语六级">CET-6</td><td><strong>566</strong></td></tr>
+            <tr><td data-en="CET-4" data-zh="英语四级">CET-4</td><td><strong>590</strong></td></tr>
+            <tr><td data-en="Chinese" data-zh="中文">Chinese</td><td><strong data-en="Native" data-zh="母语">Native</strong></td></tr>
+            <tr><td data-en="English" data-zh="英语">English</td><td><strong data-en="Professional Working" data-zh="专业工作水平">Professional Working</strong></td></tr>
           </table>
         </div>
       </div>
+    </div>
+  </div>
 
-      <div class="console-card" id="tools-card">
-        <div class="card-corners"></div>
-        <h2 class="section-title" data-en="🧰 Tool Arsenal & On-Chain Identity" data-zh="🧰 工具库 & 链上身份">🧰 Tool Arsenal & On-Chain Identity</h2>
-
-        <div class="tools-block">
-          <h3 data-en="🤖 AI & Development" data-zh="🤖 AI & 开发">🤖 AI & Development</h3>
-          <p data-en="Claude · GPT · Gemini · Claude Code · Codex · Prompt Engineering · Vibe Coding · Python · Web3 AI Skills"
-             data-zh="Claude · GPT · Gemini · Claude Code · Codex · Prompt 工程 · Vibe Coding · Python · Web3 AI 技能">
-            Claude · GPT · Gemini · Claude Code · Codex · Prompt Engineering · Vibe Coding · Python · Web3 AI Skills
-          </p>
-
-          <h3 data-en="⛓️ Blockchain Ecosystems" data-zh="⛓️ 区块链生态">⛓️ Blockchain Ecosystems</h3>
-          <p data-en="Ethereum · Base · Solana · TON · BNB Chain · HyperLiquid"
-             data-zh="Ethereum · Base · Solana · TON · BNB Chain · HyperLiquid">
-            Ethereum · Base · Solana · TON · BNB Chain · HyperLiquid
-          </p>
-
-          <h3 data-en="📣 Content & Community" data-zh="📣 内容 & 社区">📣 Content & Community</h3>
-          <p data-en="X (Twitter) ~2K Followers · Content Creation · Community Building · OpenSea · Farcaster · Galxe"
-             data-zh="X（Twitter）约 2K 粉丝 · 内容创作 · 社区建设 · OpenSea · Farcaster · Galxe">
-            X (Twitter) ~2K Followers · Content Creation · Community Building · OpenSea · Farcaster · Galxe
-          </p>
-
-          <h3 data-en="🧰 Professional Tools" data-zh="🧰 专业工具">🧰 Professional Tools</h3>
-          <p data-en="Excel · Google Workspace · Discord · Telegram"
-             data-zh="Excel · Google Workspace · Discord · Telegram">
-            Excel · Google Workspace · Discord · Telegram
-          </p>
-        </div>
-
-        <div class="extra-block">
-          <h3 data-en="✅ Status & Availability" data-zh="✅ 状态 & 可用性">✅ Status & Availability</h3>
-          <ul class="exp-bullets"
-              data-en="Currently at KCEX Exchange — open to the right opportunity; experienced in remote, cross-timezone collaboration.|Flexible scheduling — available for rotating shifts including nights and weekends.|High resilience — composure forged through crypto trading and high-frequency customer-facing roles."
-              data-zh="现任职于 KCEX 交易所——有好机会可考虑；有丰富的跨时区远程协作经验。|灵活排班——可接受轮班制及夜班安排。|强抗压能力——经高强度加密交易与高频客户服务角色锻造的沉稳心态。"></ul>
-        </div>
+  <!-- Tools & Contact -->
+  <div class="overlay-panel" id="overlay-tools">
+    <button class="back-btn" data-en="🌀 Back to Hub" data-zh="🌀 返回控制台">🌀 Back to Hub</button>
+    <div class="overlay-scroll">
+      <h2 class="scan-line" data-en="🛠️ Tools & On-Chain Identity" data-zh="🛠️ 工具 & 链上身份">🛠️ Tools & On-Chain Identity</h2>
+      <div class="console-card"><div class="card-corners"></div>
+        <h4 data-en="🤖 AI & Development" data-zh="🤖 AI & 开发">🤖 AI & Development</h4>
+        <div class="tag-cloud"><span>Claude</span><span>GPT</span><span>Gemini</span><span>Claude Code</span><span>Codex</span><span>Prompt Engineering</span><span>Vibe Coding</span><span>Python</span></div>
+        <h4 data-en="⛓️ Blockchain" data-zh="⛓️ 区块链">⛓️ Blockchain</h4>
+        <div class="tag-cloud"><span>Ethereum</span><span>Base</span><span>Solana</span><span>TON</span><span>BNB Chain</span><span>HyperLiquid</span></div>
+        <h4 data-en="🌐 Platforms" data-zh="🌐 平台">🌐 Platforms</h4>
+        <div class="tag-cloud"><span>X ~2K Followers</span><span>OpenSea</span><span>Farcaster</span><span>Galxe</span><span>Discord</span><span>Telegram</span></div>
       </div>
+      <div class="console-card" style="margin-top:20px"><div class="card-corners"></div>
+        <h3 data-en="📡 Contact & Availability" data-zh="📡 联系 & 状态">📡 Contact & Availability</h3>
+        <p>📧 lcx040210@gmail.com | 📱 +86 191-3205-1589 | 𝕏 @LiCheng43225380</p>
+        <p data-en="✅ Currently at KCEX — open to the right opportunity" data-zh="✅ 现任职于 KCEX——有好机会可考虑">✅ Currently at KCEX — open to the right opportunity</p>
+        <p data-en="✅ Flexible scheduling · Remote experienced · High resilience" data-zh="✅ 灵活排班 · 远程经验丰富 · 强抗压能力">✅ Flexible scheduling · Remote experienced · High resilience</p>
+      </div>
+    </div>
+  </div>
 
-    </section>
+</div>
 
-  </main>
-
-  <footer>
-    <p id="rick-quote" data-en="Wubba lubba dub dub! — Rick Sanchez" data-zh="Wubba lubba dub dub! — Rick Sanchez">Wubba lubba dub dub! — Rick Sanchez</p>
-    <p>© 2026 Li Chengxi · Built with Claude Code</p>
-  </footer>
-
-  <script src="script.js"></script>
+<script src="script.js"></script>
 </body>
 </html>

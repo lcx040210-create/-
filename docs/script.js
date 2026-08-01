@@ -1,448 +1,568 @@
+// ============================================================
+// LI CHENGXI — MULTIVERSE RESUME v2
+// Portal Hub + Characters + Audio + i18n
+// ============================================================
+
+// ========== AUDIO ENGINE ==========
+const AudioEngine = {
+  ctx: null, enabled: false, melodyTimer: null,
+
+  init() {
+    try { this.ctx = new (window.AudioContext || window.webkitAudioContext)(); }
+    catch(e) { console.warn('Web Audio not available'); }
+  },
+
+  async enable() {
+    if (!this.ctx) return;
+    if (this.ctx.state === 'suspended') await this.ctx.resume();
+    this.enabled = true;
+    localStorage.setItem('resume-sound', 'on');
+    this.playTheme();
+  },
+
+  disable() {
+    this.enabled = false;
+    localStorage.setItem('resume-sound', 'off');
+    if (this.melodyTimer) { clearInterval(this.melodyTimer); this.melodyTimer = null; }
+  },
+
+  play(fn) { if (this.enabled && this.ctx) fn(this.ctx); },
+
+  // Portal whoosh — rising
+  portalOpen() {
+    this.play(ctx => {
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(200, now);
+      osc.frequency.exponentialRampToValueAtTime(1200, now + 0.3);
+      gain.gain.setValueAtTime(0.15, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(now); osc.stop(now + 0.35);
+    });
+  },
+
+  // Portal whoosh — falling (return)
+  portalClose() {
+    this.play(ctx => {
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(1200, now);
+      osc.frequency.exponentialRampToValueAtTime(200, now + 0.3);
+      gain.gain.setValueAtTime(0.15, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(now); osc.stop(now + 0.35);
+    });
+  },
+
+  // Hover hum
+  hoverHum() {
+    this.play(ctx => {
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = 440;
+      gain.gain.setValueAtTime(0.04, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(now); osc.stop(now + 0.2);
+    });
+  },
+
+  // Rick burp
+  burp() {
+    this.play(ctx => {
+      const now = ctx.currentTime;
+      const bufferSize = ctx.sampleRate * 0.15;
+      const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.02));
+      }
+      const source = ctx.createBufferSource();
+      const filter = ctx.createBiquadFilter();
+      const gain = ctx.createGain();
+      source.buffer = buffer;
+      filter.type = 'bandpass';
+      filter.frequency.value = 400;
+      filter.Q.value = 2;
+      gain.gain.setValueAtTime(0.12, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+      source.connect(filter); filter.connect(gain); gain.connect(ctx.destination);
+      source.start(now);
+    });
+  },
+
+  // 8-bit style simple melody loop
+  playTheme() {
+    if (!this.enabled || !this.ctx) return;
+    if (this.melodyTimer) clearInterval(this.melodyTimer);
+
+    const notes = [
+      262, 294, 330, 349, 392, 349, 330, 294,
+      262, 330, 392, 523, 392, 330, 294, 262,
+      294, 330, 392, 349, 330, 294, 262, 247,
+      262, 294, 330, 392, 349, 330, 294, 262
+    ];
+    let i = 0;
+    const playNote = () => {
+      if (!this.enabled) { clearInterval(this.melodyTimer); return; }
+      const ctx = this.ctx;
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'square';
+      osc.frequency.value = notes[i % notes.length];
+      gain.gain.setValueAtTime(0.025, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(now); osc.stop(now + 0.2);
+      i++;
+    };
+    playNote();
+    this.melodyTimer = setInterval(playNote, 220);
+  }
+};
+
 // ========== I18N ENGINE ==========
 const I18nEngine = {
-  // localStorage can throw (e.g. blocked cookies / privacy mode), which would
-  // otherwise kill the whole script at load. Fall back to 'en'.
-  currentLang: (() => {
-    try { return localStorage.getItem('resume-lang') || 'en'; }
-    catch (e) { return 'en'; }
-  })(),
+  currentLang: (() => { try { return localStorage.getItem('resume-lang') || 'en'; } catch(e) { return 'en'; } })(),
 
   init() {
     this.applyLang(this.currentLang);
-    this.updateToggleButton();
-    document.getElementById('lang-toggle').addEventListener('click', () => this.toggle());
+    const btn = document.getElementById('lang-toggle');
+    if (btn) btn.addEventListener('click', () => this.toggle());
   },
 
-  // Debounce flag: prevents re-entrant toggles while the portal animation
-  // (300ms expand + 150ms collapse) is still running.
-  busy: false,
-
   toggle() {
-    if (this.busy) return;
-    this.busy = true;
-    const overlay = document.getElementById('portal-overlay');
-    // Phase 1: expand portal
-    overlay.classList.add('active');
-
-    setTimeout(() => {
-      // Phase 2: swap all text
-      this.currentLang = this.currentLang === 'en' ? 'zh' : 'en';
-      try { localStorage.setItem('resume-lang', this.currentLang); }
-      catch (e) { /* storage unavailable — language still switches in-memory */ }
-      this.applyLang(this.currentLang);
-      this.updateToggleButton();
-
-      // Phase 3: collapse portal
-      setTimeout(() => {
-        overlay.classList.remove('active');
-        this.busy = false;
-      }, 150);
-    }, 300);
+    this.currentLang = this.currentLang === 'en' ? 'zh' : 'en';
+    try { localStorage.setItem('resume-lang', this.currentLang); } catch(e) {}
+    this.applyLang(this.currentLang);
+    AudioEngine.play(ctx => {
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(523, now);
+      osc.frequency.setValueAtTime(659, now + 0.08);
+      osc.frequency.setValueAtTime(784, now + 0.16);
+      gain.gain.setValueAtTime(0.06, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(now); osc.stop(now + 0.25);
+    });
   },
 
   applyLang(lang) {
     document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
 
-    // Standard text swap for every container carrying both data attributes.
-    // The hero-summary stores <br> paragraph breaks inside its data-en/data-zh
-    // values, so it must be written via innerHTML (not textContent) for the
-    // <br> tags to render as line breaks instead of literal text.
+    // Text elements
     document.querySelectorAll('[data-en][data-zh]').forEach(el => {
-      const value = el.getAttribute(`data-${lang}`);
       if (el.classList.contains('hero-summary')) {
-        el.innerHTML = value;
+        el.innerHTML = el.getAttribute(`data-${lang}`);
       } else {
-        el.textContent = value;
+        el.textContent = el.getAttribute(`data-${lang}`);
       }
     });
 
-    // Handle structured content (lists with pipe-delimited items). This covers
-    // every list carrying data-en/data-zh, including .exp-bullets ULs. Bullet
-    // text may contain **strong** markdown that must become <strong> tags
-    // instead of rendering as literal asterisks.
+    // UL elements with pipe-delimited items
     document.querySelectorAll(`[data-${lang}]`).forEach(el => {
+      if (el.tagName !== 'UL') return;
       const data = el.getAttribute(`data-${lang}`);
-      if (data && el.tagName === 'UL') {
-        el.innerHTML = data.split('|')
-          .map(item => `<li>${item.trim().replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')}</li>`)
-          .join('');
-      }
+      if (!data) return;
+      el.innerHTML = data.split('|').map(item =>
+        `<li>${item.trim().replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')}</li>`
+      ).join('');
     });
-  },
 
-  updateToggleButton() {
-    const btn = document.getElementById('lang-toggle');
-    const enLabel = btn.querySelector('.lang-label:first-child');
-    const zhLabel = btn.querySelector('.lang-label:last-child');
-    if (this.currentLang === 'en') {
-      enLabel.style.fontWeight = '700';
-      enLabel.style.color = 'var(--portal-green)';
-      zhLabel.style.fontWeight = '400';
-      zhLabel.style.color = 'var(--text-dim)';
-    } else {
-      zhLabel.style.fontWeight = '700';
-      zhLabel.style.color = 'var(--portal-green)';
-      enLabel.style.fontWeight = '400';
-      enLabel.style.color = 'var(--text-dim)';
-    }
+    // Update lang toggle UI
+    document.querySelectorAll('.lang-opt').forEach(opt => {
+      const isActive = opt.getAttribute('data-lang') === lang;
+      opt.classList.toggle('active', isActive);
+    });
   },
 
   getLang() { return this.currentLang; }
 };
 
-// ========== CANVAS PARTICLE BACKGROUND ==========
-const PortalCanvas = {
+// ========== STARFIELD CANVAS ==========
+const StarfieldCanvas = {
   canvas: null, ctx: null,
-  particles: [], vortices: [], characters: [],
-  animFrame: null,
+  stars: [], animFrame: null,
   width: 0, height: 0,
 
   init() {
-    this.canvas = document.getElementById('portal-canvas');
-    if (!this.canvas) return; // guard: canvas must exist (Task 1 HTML)
+    this.canvas = document.getElementById('starfield-canvas');
     this.ctx = this.canvas.getContext('2d');
     this.resize();
-    this._onResize = () => this.resize();
-    window.addEventListener('resize', this._onResize);
+    window.addEventListener('resize', () => this.resize());
 
-    // Mobile optimization: fewer particles below 768px viewport width
-    const isMobile = window.innerWidth < 768;
-    const particleCount = isMobile ? 18 : 48;
-    const vortexCount = isMobile ? 3 : 9;
-    const charCount = isMobile ? 0 : 3;
-
-    // Floating particles (80% of 60 = 48 desktop / 18 mobile)
-    for (let i = 0; i < particleCount; i++) {
-      this.particles.push(new FloatingParticle(this.width, this.height));
+    // Create starfield: 200 stars + 20 green portal particles
+    for (let i = 0; i < 200; i++) {
+      this.stars.push({
+        x: Math.random() * this.width,
+        y: Math.random() * this.height,
+        size: Math.random() * 2 + 0.5,
+        speed: Math.random() * 0.3 + 0.05,
+        opacity: Math.random() * 0.7 + 0.3,
+        twinkle: Math.random() * Math.PI * 2
+      });
     }
-    // Portal vortex rings (15% of 60 = 9 desktop / 3 mobile)
-    for (let i = 0; i < vortexCount; i++) {
-      this.vortices.push(new PortalVortexParticle(this.width, this.height));
+    // Portal particles
+    for (let i = 0; i < 20; i++) {
+      this.stars.push({
+        x: Math.random() * this.width,
+        y: Math.random() * this.height,
+        size: Math.random() * 3 + 1,
+        speed: Math.random() * 0.5 + 0.1,
+        opacity: Math.random() * 0.5 + 0.3,
+        twinkle: Math.random() * Math.PI * 2,
+        green: true
+      });
     }
-    // Pixel characters (5% of 60 = 3 desktop / 0 mobile)
-    const charTypes = ['rick', 'morty', 'rick'];
-    for (let i = 0; i < charCount; i++) {
-      this.characters.push(new PixelCharacter(this.width, this.height, charTypes[i % charTypes.length]));
-    }
-
     this.animate();
   },
 
   resize() {
     this.width = this.canvas.width = window.innerWidth;
     this.height = this.canvas.height = window.innerHeight;
-    // Keep every active particle's bounds in sync with the viewport
-    this.particles.forEach(p => p.updateBounds(this.width, this.height));
-    this.vortices.forEach(v => v.updateBounds(this.width, this.height));
-    this.characters.forEach(c => c.updateBounds(this.width, this.height));
   },
 
   animate() {
     this.ctx.clearRect(0, 0, this.width, this.height);
+    this.stars.forEach(s => {
+      s.twinkle += 0.02;
+      const alpha = s.opacity + Math.sin(s.twinkle) * 0.2;
+      s.y -= s.speed;
+      if (s.y < -5) { s.y = this.height + 5; s.x = Math.random() * this.width; }
 
-    this.particles.forEach(p => { p.update(); p.draw(this.ctx); });
-    this.vortices.forEach(v => { v.update(); v.draw(this.ctx); });
-    this.characters.forEach(c => { c.update(); c.draw(this.ctx); });
-
+      this.ctx.beginPath();
+      this.ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
+      if (s.green) {
+        this.ctx.fillStyle = `rgba(151,206,76,${alpha})`;
+        // Glow for portal particles
+        this.ctx.beginPath();
+        this.ctx.arc(s.x, s.y, s.size * 3, 0, Math.PI * 2);
+        this.ctx.fillStyle = `rgba(151,206,76,${alpha * 0.1})`;
+        this.ctx.fill();
+      } else {
+        this.ctx.fillStyle = `rgba(224,240,232,${alpha})`;
+      }
+      this.ctx.fill();
+    });
     this.animFrame = requestAnimationFrame(() => this.animate());
-  },
-
-  // Teardown hook for Task 6's unified entry point / SPA navigation.
-  destroy() {
-    if (this.animFrame) cancelAnimationFrame(this.animFrame);
-    this.animFrame = null;
-    if (this._onResize) window.removeEventListener('resize', this._onResize);
-    this.particles = [];
-    this.vortices = [];
-    this.characters = [];
   }
 };
 
-// ========== FLOATING PARTICLE ==========
-class FloatingParticle {
-  constructor(w, h) {
-    this.x = Math.random() * w;
-    this.y = Math.random() * h;
-    this.size = Math.random() * 2.5 + 1;
-    this.speedX = (Math.random() - 0.5) * 0.3;
-    this.speedY = (Math.random() - 0.5) * 0.3 - 0.2; // slight upward drift
-    this.opacity = Math.random() * 0.5 + 0.2;
-    this.width = w; this.height = h;
-  }
-
-  updateBounds(w, h) { this.width = w; this.height = h; }
-
-  update() {
-    this.x += this.speedX;
-    this.y += this.speedY;
-    // Wrap around edges
-    if (this.x < -5) this.x = this.width + 5;
-    if (this.x > this.width + 5) this.x = -5;
-    if (this.y < -5) this.y = this.height + 5;
-    if (this.y > this.height + 5) this.y = -5;
-  }
-
-  draw(ctx) {
-    ctx.beginPath();
-    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(151, 206, 76, ${this.opacity})`;
-    ctx.fill();
-    // Small glow
-    ctx.beginPath();
-    ctx.arc(this.x, this.y, this.size * 2, 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(151, 206, 76, ${this.opacity * 0.15})`;
-    ctx.fill();
-  }
-}
-
-// ========== PORTAL VORTEX PARTICLE ==========
-class PortalVortexParticle {
-  constructor(w, h) {
-    this.reset(w, h);
-  }
-
-  reset(w, h) {
-    this.x = Math.random() * w;
-    this.y = Math.random() * h;
-    this.radius = 0;
-    this.maxRadius = Math.random() * 40 + 20;
-    this.growing = true;
-    this.life = 0;
-    this.maxLife = Math.random() * 180 + 120; // 3-5 seconds at 60fps
-    this.width = w; this.height = h;
-  }
-
-  updateBounds(w, h) { this.width = w; this.height = h; }
-
-  update() {
-    this.life++;
-    if (this.growing) {
-      this.radius += 0.4;
-      if (this.radius >= this.maxRadius) this.growing = false;
-    } else {
-      this.radius -= 0.3;
-    }
-    if (this.life >= this.maxLife) this.reset(this.width, this.height);
-  }
-
-  draw(ctx) {
-    // Guard: update() shrinks radius by 0.3/frame after it stops growing, and
-    // a long-lived vortex can outlive its shrink-to-zero time. A negative
-    // radius throws IndexSizeError from ctx.arc()/createRadialGradient(),
-    // which would propagate out of the rAF callback and freeze every particle.
-    if (this.radius < 0) this.radius = 0;
-    const alpha = 1 - (this.life / this.maxLife);
-    // Outer ring
-    ctx.beginPath();
-    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-    ctx.strokeStyle = `rgba(0, 181, 204, ${alpha * 0.6})`;
-    ctx.lineWidth = 2;
-    ctx.stroke();
-    // Inner glow
-    const gradient = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.radius);
-    gradient.addColorStop(0, `rgba(151, 206, 76, ${alpha * 0.4})`);
-    gradient.addColorStop(1, `rgba(151, 206, 76, 0)`);
-    ctx.beginPath();
-    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-    ctx.fillStyle = gradient;
-    ctx.fill();
-  }
-}
-
-// ========== PIXEL CHARACTER ==========
-class PixelCharacter {
-  constructor(w, h, type) {
-    this.type = type; // 'rick' or 'morty'
-    this.size = type === 'rick' ? 8 : 6;
-    this.x = Math.random() * w;
-    this.y = h - 40 - Math.random() * 200;
-    this.speed = type === 'rick' ? 0.5 : 1.2;
-    this.direction = Math.random() > 0.5 ? 1 : -1;
-    this.walkFrame = 0;
-    this.active = Math.random() > 0.7; // 30% chance to be visible at start
-    this.cooldown = Math.floor(Math.random() * 300);
-    this.width = w; this.height = h;
-    // Simple pixel art: Rick = green spikes, Morty = yellow shirt
-    this.color = type === 'rick' ? '#97ce4c' : '#f5e642';
-    this.secondary = type === 'rick' ? '#00b5cc' : '#e8a850';
-  }
-
-  updateBounds(w, h) { this.width = w; this.height = h; }
-
-  update() {
-    if (!this.active) {
-      this.cooldown--;
-      if (this.cooldown <= 0) {
-        this.active = true;
-        this.x = this.direction > 0 ? -20 : this.width + 20;
-        this.y = this.height - 40 - Math.random() * 100;
-        this.cooldown = Math.floor(Math.random() * 600 + 300);
-      }
-      return;
-    }
-    this.x += this.speed * this.direction;
-    this.walkFrame = (this.walkFrame + 0.1) % 2;
-    // Walk off screen
-    if (this.x > this.width + 30 || this.x < -30) {
-      this.active = false;
-      this.direction *= -1;
-    }
-  }
-
-  draw(ctx) {
-    if (!this.active) return;
-    const s = this.size;
-    const x = Math.floor(this.x);
-    const y = Math.floor(this.y + (this.walkFrame > 1 ? 1 : 0));
-    // Body
-    ctx.fillStyle = this.color;
-    ctx.fillRect(x, y + s, s * 2, s * 2);
-    // Head
-    ctx.fillStyle = this.secondary;
-    ctx.fillRect(x + s / 2, y, s, s);
-    // Legs (alternating walk)
-    const step = Math.floor(this.walkFrame);
-    ctx.fillStyle = '#555';
-    ctx.fillRect(x, y + s * 3 + (step ? 1 : 0), s, s);
-    ctx.fillRect(x + s, y + s * 3 + (step ? 0 : 1), s, s);
-  }
-}
-
-// ========== EASTER EGG SYSTEM ==========
-const EasterEggs = {
-  quotes: {
-    en: [
-      "This resume is *burp* the best in the multiverse, Morty!",
-      "You gotta pump those numbers up, those are rookie numbers!",
-      "Wubba lubba dub dub! Hire this guy!",
-      "I turned myself into a resume, Morty! I'm Resume Rick!",
-      "In an infinite multiverse, this is the best hire you'll make.",
-      "Don't think about it, just hire him, Morty!"
-    ],
-    zh: [
-      "这份简历是*嗝*多元宇宙里最棒的，Morty！",
-      "你得把那些数字搞上去，这都是菜鸟水平！",
-      "Wubba lubba dub dub！快雇这个人！",
-      "我把自己变成了一份简历，Morty！我是简历 Rick！",
-      "在无限多元宇宙里，这是你能做出的最好招聘。",
-      "别想了，就雇他吧，Morty！"
-    ]
-  },
-  bubbleTimer: null,
+// ========== CHARACTER SYSTEM ==========
+const CharacterSystem = {
+  rick: { x: 0, y: 0, vx: 0.4, dir: 1, frame: 0, state: 'walk', stateTimer: 0 },
+  morty: { x: 0, y: 0, vx: 0.7, dir: 1, frame: 0, state: 'follow', stateTimer: 0 },
+  speechTimer: null,
 
   init() {
-    this.scheduleBubble();
-    this.initPortalGunCursor();
-    this.initTitleGlitch();
+    // Position characters on canvas
+    this.rick.x = -50;
+    this.rick.y = window.innerHeight - 80;
+    this.morty.x = -80;
+    this.morty.y = window.innerHeight - 60;
+    this.scheduleSpeech();
+    window.addEventListener('resize', () => {
+      this.rick.y = window.innerHeight - 80;
+      this.morty.y = window.innerHeight - 60;
+    });
+
+    // Draw characters on the starfield canvas
+    this.drawLoop();
   },
 
-  scheduleBubble() {
-    const delay = Math.random() * 15000 + 15000; // 15-30 seconds
-    this.bubbleTimer = setTimeout(() => {
-      this.showBubble();
-      this.scheduleBubble();
+  scheduleSpeech() {
+    const delay = Math.random() * 20000 + 10000;
+    this.speechTimer = setTimeout(() => {
+      this.showSpeech();
+      this.scheduleSpeech();
     }, delay);
   },
 
-  showBubble() {
-    const layer = document.getElementById('easter-egg-layer');
-    if (!layer) return; // guard: layer must exist (Task 1 HTML)
-
-    const lang = I18nEngine.getLang();
-    const quotes = this.quotes[lang] || this.quotes.en;
-    const quote = quotes[Math.floor(Math.random() * quotes.length)];
+  showSpeech() {
+    const quotes = I18nEngine.getLang() === 'zh' ? [
+      '这份简历是*嗝*多元宇宙里最棒的！',
+      'Wubba lubba dub dub！',
+      '我得喝一杯再继续看...',
+      'Morty！别碰那个传送门！',
+      '这人比我聪明——就聪明那么一点点。'
+    ] : [
+      'This resume is *burp* the best in the multiverse!',
+      'Wubba lubba dub dub!',
+      'I need a drink before reading more...',
+      'Morty! Don\'t touch that portal!',
+      'This guy is smarter than me — just a little bit.'
+    ];
+    const text = quotes[Math.floor(Math.random() * quotes.length)];
 
     const bubble = document.createElement('div');
-    bubble.className = 'rick-bubble';
-    bubble.innerHTML = `
-      <div class="bubble-avatar">🧪</div>
-      <div class="bubble-text">${quote}</div>
-    `;
-    layer.appendChild(bubble);
+    bubble.className = 'rick-speech';
+    bubble.textContent = text;
+    bubble.style.left = Math.max(10, this.rick.x - 80) + 'px';
+    bubble.style.bottom = (window.innerHeight - this.rick.y + 50) + 'px';
+    document.getElementById('character-bubbles').appendChild(bubble);
 
-    // Float up and fade out
-    setTimeout(() => {
-      bubble.style.animation = 'floatUp 1.5s ease forwards';
-      setTimeout(() => bubble.remove(), 1500);
-    }, 5000);
+    setTimeout(() => { if (bubble.parentNode) bubble.remove(); }, 5200);
+
+    // 40% chance of burp with speech
+    if (Math.random() < 0.4) AudioEngine.burp();
   },
 
-  // Portal gun cursor in hero area
-  initPortalGunCursor() {
-    const hero = document.getElementById('hero');
-    if (!hero) return; // guard: hero must exist (Task 1 HTML)
-    const portalCursorSVG = `data:image/svg+xml,${encodeURIComponent(
-      '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">' +
-      '<circle cx="12" cy="12" r="6" fill="none" stroke="#97ce4c" stroke-width="2"/>' +
-      '<circle cx="12" cy="12" r="2" fill="#97ce4c"/>' +
-      '<line x1="12" y1="6" x2="12" y2="2" stroke="#97ce4c" stroke-width="1.5"/>' +
-      '<line x1="18" y1="12" x2="22" y2="12" stroke="#97ce4c" stroke-width="1.5"/>' +
-      '</svg>'
-    )}`;
+  update() {
+    const w = window.innerWidth;
 
-    hero.addEventListener('mouseenter', () => {
-      hero.style.cursor = `url('${portalCursorSVG}') 12 12, auto`;
-    });
-    hero.addEventListener('mouseleave', () => {
-      hero.style.cursor = 'default';
-    });
+    // Rick behavior
+    this.rick.stateTimer++;
+    if (this.rick.stateTimer > 300) {
+      this.rick.stateTimer = 0;
+      const states = ['walk', 'walk', 'walk', 'pause', 'turn'];
+      this.rick.state = states[Math.floor(Math.random() * states.length)];
+    }
+
+    switch (this.rick.state) {
+      case 'walk':
+        this.rick.x += this.rick.vx * this.rick.dir;
+        this.rick.frame += 0.05;
+        if (this.rick.x > w + 10) this.rick.dir = -1;
+        if (this.rick.x < -10) this.rick.dir = 1;
+        break;
+      case 'pause':
+        this.rick.frame = 0;
+        break;
+      case 'turn':
+        this.rick.dir *= -1;
+        this.rick.state = 'walk';
+        break;
+    }
+
+    // Morty follows Rick with offset
+    this.morty.dir = this.rick.dir;
+    this.morty.x += (this.rick.x - 50 * this.rick.dir - this.morty.x) * 0.05;
+    this.morty.frame = this.rick.frame;
+    if (this.rick.state === 'pause') this.morty.state = 'nervous';
+    else this.morty.state = 'follow';
   },
 
-  // Random title character glitch (Rick's influence)
-  initTitleGlitch() {
-    setInterval(() => {
-      if (Math.random() > 0.85) { // 15% chance every 3 seconds
-        const name = document.querySelector('.hero-name');
-        if (!name) return; // guard: name must exist (Task 1 HTML)
-        const glitchText = name.textContent.split('').map(c =>
-          Math.random() > 0.9 ? String.fromCharCode(33 + Math.random() * 90) : c
-        ).join('');
-        name.textContent = glitchText;
-        setTimeout(() => { name.textContent = I18nEngine.getLang() === 'zh' ?
-          name.getAttribute('data-zh') : name.getAttribute('data-en'); }, 150);
+  drawPixelChar(ctx, x, y, type, frame, dir) {
+    ctx.save();
+    if (dir < 0) { ctx.translate(x + 24, y); ctx.scale(-1, 1); x = 0; }
+    else ctx.translate(x, y);
+
+    const bob = Math.sin(frame * Math.PI) * 2;
+
+    if (type === 'rick') {
+      // Hair spikes
+      ctx.fillStyle = '#5bc0eb';
+      ctx.fillRect(6, -10, 12, 8);
+      ctx.fillRect(4, -12, 4, 12);
+      ctx.fillRect(16, -12, 4, 12);
+      // Head
+      ctx.fillStyle = '#f5d6c3';
+      ctx.fillRect(6, -2, 12, 10);
+      // Lab coat
+      ctx.fillStyle = '#e8e8e8';
+      ctx.fillRect(4, 8, 16, 16);
+      // Belt
+      ctx.fillStyle = '#555';
+      ctx.fillRect(4, 22, 16, 2);
+      // Pants
+      ctx.fillStyle = '#8B7355';
+      ctx.fillRect(4, 24, 7, 12 + bob);
+      ctx.fillRect(13, 24, 7, 12 - bob);
+      // Portal gun
+      ctx.fillStyle = '#888';
+      ctx.fillRect(18, 10, 6, 3);
+      ctx.fillStyle = '#97ce4c';
+      ctx.fillRect(22, 9, 4, 5);
+    } else {
+      // Morty
+      ctx.fillStyle = '#8B4513';
+      ctx.fillRect(8, -2, 8, 9);
+      // Yellow shirt
+      ctx.fillStyle = '#f5e642';
+      ctx.fillRect(5, 7, 14, 12);
+      // Blue pants
+      ctx.fillStyle = '#4169E1';
+      ctx.fillRect(5, 19, 6, 10 + bob);
+      ctx.fillRect(13, 19, 6, 10 - bob);
+      // Nervous shake when stopped
+      if (this.morty.state === 'nervous') {
+        ctx.translate(Math.sin(Date.now() * 0.05) * 2, 0);
       }
-    }, 3000);
-  }
+    }
+    // Legs alternate with frame
+    ctx.fillStyle = '#333';
+    ctx.fillRect(6, 29 + Math.max(bob, 0), 4, 6);
+    ctx.fillRect(14, 29 + Math.max(-bob, 0), 4, 6);
+
+    ctx.restore();
+  },
+
 };
 
-// ========== SCROLL EFFECTS ==========
-const ScrollEffects = {
+// Hook character drawing into starfield animation
+StarfieldCanvas.animate = function() {
+  this.ctx.clearRect(0, 0, this.width, this.height);
+  this.stars.forEach(s => {
+    s.twinkle += 0.02;
+    const alpha = s.opacity + Math.sin(s.twinkle) * 0.2;
+    s.y -= s.speed;
+    if (s.y < -5) { s.y = this.height + 5; s.x = Math.random() * this.width; }
+    this.ctx.beginPath();
+    this.ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
+    if (s.green) {
+      this.ctx.fillStyle = `rgba(151,206,76,${alpha})`;
+      this.ctx.beginPath();
+      this.ctx.arc(s.x, s.y, s.size * 3, 0, Math.PI * 2);
+      this.ctx.fillStyle = `rgba(151,206,76,${alpha * 0.1})`;
+      this.ctx.fill();
+    } else {
+      this.ctx.fillStyle = `rgba(224,240,232,${alpha})`;
+    }
+    this.ctx.fill();
+  });
+
+  // Draw characters
+  const r = CharacterSystem.rick;
+  const m = CharacterSystem.morty;
+  CharacterSystem.update();
+  CharacterSystem.drawPixelChar(this.ctx, r.x, r.y, 'rick', r.frame, r.dir);
+  CharacterSystem.drawPixelChar(this.ctx, m.x, m.y, 'morty', m.frame, m.dir);
+
+  this.animFrame = requestAnimationFrame(() => this.animate());
+};
+
+// ========== CONTENT MANAGER ==========
+const ContentManager = {
+  currentSection: null,
+  transitioning: false,
+
   init() {
-    this.initProgressBar();
-    this.initFadeInObserver();
-  },
-
-  initProgressBar() {
-    const bar = document.getElementById('scroll-progress');
-    window.addEventListener('scroll', () => {
-      const scrollTop = window.scrollY;
-      const docHeight = document.documentElement.scrollHeight - window.innerHeight;
-      const progress = docHeight > 0 ? (scrollTop / docHeight) * 100 : 0;
-      bar.style.height = `${Math.min(progress, 100)}%`;
-    }, { passive: true });
-  },
-
-  initFadeInObserver() {
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach(entry => {
-        if (entry.isIntersecting) {
-          entry.target.classList.add('animate-in');
-          observer.unobserve(entry.target);
-        }
+    // Bind portal clicks
+    document.querySelectorAll('.portal').forEach(portal => {
+      portal.addEventListener('click', () => {
+        if (this.transitioning) return;
+        const section = portal.getAttribute('data-section');
+        this.navigateTo(section);
       });
-    }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
-
-    document.querySelectorAll('.console-card').forEach(card => {
-      observer.observe(card);
+      portal.addEventListener('mouseenter', () => AudioEngine.hoverHum());
     });
+
+    // Bind back buttons
+    document.querySelectorAll('.back-btn').forEach(btn => {
+      btn.addEventListener('click', () => this.navigateBack());
+    });
+
+    // Keyboard: Escape to go back
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && this.currentSection) this.navigateBack();
+    });
+  },
+
+  navigateTo(sectionId) {
+    if (this.transitioning) return;
+    this.transitioning = true;
+    AudioEngine.portalOpen();
+
+    const overlay = document.getElementById('portal-overlay');
+    overlay.classList.add('active');
+
+    setTimeout(() => {
+      // Hide hub
+      document.getElementById('portal-hub').style.display = 'none';
+
+      // Show target overlay
+      const panel = document.getElementById(`overlay-${sectionId}`);
+      if (panel) {
+        document.querySelectorAll('.overlay-panel').forEach(p => p.classList.remove('active', 'closing'));
+        panel.classList.add('active');
+        panel.querySelector('.overlay-scroll').scrollTop = 0;
+        this.currentSection = sectionId;
+      }
+
+      setTimeout(() => {
+        overlay.classList.remove('active');
+        this.transitioning = false;
+      }, 200);
+    }, 350);
+  },
+
+  navigateBack() {
+    if (this.transitioning) return;
+    this.transitioning = true;
+    AudioEngine.portalClose();
+
+    const overlay = document.getElementById('portal-overlay');
+    overlay.classList.add('active');
+
+    // Close current panel
+    const panel = document.getElementById(`overlay-${this.currentSection}`);
+    if (panel) {
+      panel.classList.remove('active');
+      panel.classList.add('closing');
+      setTimeout(() => panel.classList.remove('closing'), 400);
+    }
+
+    setTimeout(() => {
+      document.getElementById('portal-hub').style.display = '';
+      this.currentSection = null;
+
+      setTimeout(() => {
+        overlay.classList.remove('active');
+        this.transitioning = false;
+      }, 200);
+    }, 350);
   }
 };
+
+// ========== SOUND TOGGLE ==========
+function initSoundToggle() {
+  const btn = document.getElementById('sound-toggle');
+  if (!btn) return;
+
+  const wasEnabled = (() => { try { return localStorage.getItem('resume-sound') === 'on'; } catch(e) { return false; } })();
+
+  const updateBtn = () => {
+    const on = AudioEngine.enabled;
+    btn.textContent = on ? '🔊 Sound On' : '🔇 Sound Off';
+    btn.classList.toggle('on', on);
+  };
+
+  if (wasEnabled) {
+    AudioEngine.init();
+    AudioEngine.enable().then(updateBtn);
+  } else {
+    AudioEngine.init();
+    updateBtn();
+  }
+
+  btn.addEventListener('click', async () => {
+    if (AudioEngine.enabled) {
+      AudioEngine.disable();
+    } else {
+      await AudioEngine.enable();
+    }
+    updateBtn();
+  });
+}
 
 // ========== INIT ==========
 document.addEventListener('DOMContentLoaded', () => {
+  StarfieldCanvas.init();
+  CharacterSystem.init();
   I18nEngine.init();
-  PortalCanvas.init();
-  EasterEggs.init();
-  ScrollEffects.init();
-  console.log('🧪 Resume site initialized — Wubba lubba dub dub!');
+  ContentManager.init();
+  initSoundToggle();
+  console.log('🧪 Multiverse Resume ready — Wubba lubba dub dub!');
 });
