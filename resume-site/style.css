@@ -60,10 +60,19 @@ html, body {
 /* ========== PORTAL HUB ========== */
 #portal-hub {
   position:fixed; inset:0; z-index:50;
-  display:flex; align-items:center; justify-content:center;
+  pointer-events:none;
 }
+#portal-hub > * { pointer-events:auto; }
 
-/* Sound toggle */
+/* Portals — positioned by JS as position:fixed relative to viewport */
+.portal {
+  position:fixed;
+  width:120px; height:60px;
+  cursor:pointer; z-index:52;
+  transform:translate(-50%, -50%);
+  animation: orbitFloat 12s linear infinite;
+  transition:transform 0.3s ease, filter 0.3s ease;
+}
 .sound-btn {
   position:fixed; top:20px; right:20px; z-index:110;
   background:var(--lab-gray);
@@ -82,7 +91,8 @@ html, body {
 
 /* Center Console */
 .center-console {
-  position:relative; z-index:55;
+  position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+  z-index:55;
   text-align:center;
   padding:40px 60px;
   background:radial-gradient(ellipse at center, rgba(26,31,46,0.95) 0%, rgba(26,31,46,0.6) 70%, transparent 100%);
@@ -122,17 +132,7 @@ html, body {
 .lang-opt.active { color:var(--portal-green); font-weight:700; }
 .lang-sep { color:var(--text-muted); margin:0 4px; }
 
-/* Portals — orbiting around center */
-.portal {
-  position:absolute;
-  width:120px; height:60px;
-  cursor:pointer; z-index:52;
-  /* top/left set by JS positionPortals() */
-  transform:translate(-50%, -50%);
-  animation: orbitFloat 12s linear infinite;
-  transition:transform 0.3s ease, filter 0.3s ease;
-  pointer-events:auto;
-}
+/* Portal styles are in the Portal Hub section above */
 .portal:hover {
   transform:translate(-50%, -50%) scale(1.25);
   filter:brightness(1.4);

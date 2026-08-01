@@ -321,9 +321,8 @@ var ContentMgr = {
   },
 
   placePortals: function() {
-    var hub = document.getElementById('portal-hub');
-    if (!hub) return;
-    var cx = hub.offsetWidth / 2, cy = hub.offsetHeight / 2;
+    var cx = window.innerWidth / 2;
+    var cy = window.innerHeight / 2;
     var r = window.innerWidth < 768 ? 160 : 260;
     document.querySelectorAll('.portal').forEach(function(p, i) {
       var rad = (i * 60 * Math.PI) / 180;
