@@ -232,6 +232,11 @@ class PortalVortexParticle {
   }
 
   draw(ctx) {
+    // Guard: update() shrinks radius by 0.3/frame after it stops growing, and
+    // a long-lived vortex can outlive its shrink-to-zero time. A negative
+    // radius throws IndexSizeError from ctx.arc()/createRadialGradient(),
+    // which would propagate out of the rAF callback and freeze every particle.
+    if (this.radius < 0) this.radius = 0;
     const alpha = 1 - (this.life / this.maxLife);
     // Outer ring
     ctx.beginPath();
