@@ -449,9 +449,14 @@ const ContentManager = {
   transitioning: false,
 
   init() {
+    // Position portals with JS (not CSS sin/cos — better compatibility)
+    this.positionPortals();
+    window.addEventListener('resize', () => this.positionPortals());
+
     // Bind portal clicks
     document.querySelectorAll('.portal').forEach(portal => {
-      portal.addEventListener('click', () => {
+      portal.addEventListener('click', (e) => {
+        e.stopPropagation();
         if (this.transitioning) return;
         const section = portal.getAttribute('data-section');
         this.navigateTo(section);
@@ -461,12 +466,32 @@ const ContentManager = {
 
     // Bind back buttons
     document.querySelectorAll('.back-btn').forEach(btn => {
-      btn.addEventListener('click', () => this.navigateBack());
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.navigateBack();
+      });
     });
 
     // Keyboard: Escape to go back
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape' && this.currentSection) this.navigateBack();
+    });
+  },
+
+  positionPortals() {
+    const hub = document.getElementById('portal-hub');
+    if (!hub) return;
+    const cx = hub.offsetWidth / 2;
+    const cy = hub.offsetHeight / 2;
+    const radius = window.innerWidth < 768 ? 160 : 260;
+
+    document.querySelectorAll('.portal').forEach((portal, i) => {
+      const angleDeg = i * 60; // 6 portals, 60° apart
+      const angleRad = (angleDeg * Math.PI) / 180;
+      const x = cx + radius * Math.cos(angleRad);
+      const y = cy + radius * Math.sin(angleRad);
+      portal.style.left = x + 'px';
+      portal.style.top = y + 'px';
     });
   },
 
@@ -564,5 +589,8 @@ document.addEventListener('DOMContentLoaded', () => {
   I18nEngine.init();
   ContentManager.init();
   initSoundToggle();
+  // Re-position portals after fonts/layout settle
+  setTimeout(() => ContentManager.positionPortals(), 500);
+  window.addEventListener('resize', () => ContentManager.positionPortals());
   console.log('🧪 Multiverse Resume ready — Wubba lubba dub dub!');
 });

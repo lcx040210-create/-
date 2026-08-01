@@ -127,11 +127,11 @@ html, body {
   position:absolute;
   width:120px; height:60px;
   cursor:pointer; z-index:52;
-  top:calc(50% + var(--orbit-radius) * sin(var(--orbit-angle)));
-  left:calc(50% + var(--orbit-radius) * cos(var(--orbit-angle)));
+  /* top/left set by JS positionPortals() */
   transform:translate(-50%, -50%);
-  animation: orbitFloat 12s linear var(--orbit-delay) infinite;
+  animation: orbitFloat 12s linear infinite;
   transition:transform 0.3s ease, filter 0.3s ease;
+  pointer-events:auto;
 }
 .portal:hover {
   transform:translate(-50%, -50%) scale(1.25);
