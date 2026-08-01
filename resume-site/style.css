@@ -60,9 +60,8 @@ html, body {
 /* ========== PORTAL HUB ========== */
 #portal-hub {
   position:fixed; inset:0; z-index:50;
-  pointer-events:none;
+  /* pointer-events removed — was blocking all child interaction */
 }
-#portal-hub > * { pointer-events:auto; }
 
 /* Portals — positioned by JS as position:fixed relative to viewport */
 .portal {
@@ -92,8 +91,9 @@ html, body {
 /* Center Console */
 .center-console {
   position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
-  z-index:55;
+  z-index:45;
   text-align:center;
+  pointer-events:none;
   padding:40px 60px;
   background:radial-gradient(ellipse at center, rgba(26,31,46,0.95) 0%, rgba(26,31,46,0.6) 70%, transparent 100%);
   border:2px solid rgba(151,206,76,0.3);
@@ -101,6 +101,7 @@ html, body {
   box-shadow:0 0 60px rgba(151,206,76,0.1), inset 0 0 40px rgba(151,206,76,0.03);
   animation: consolePulse 3s ease-in-out infinite;
 }
+.center-console > * { pointer-events:auto; }
 @keyframes consolePulse {
   0%,100% { border-color:rgba(151,206,76,0.3); box-shadow:0 0 60px rgba(151,206,76,0.1); }
   50% { border-color:rgba(151,206,76,0.6); box-shadow:0 0 80px rgba(151,206,76,0.2); }
@@ -134,8 +135,9 @@ html, body {
 
 /* Portal styles are in the Portal Hub section above */
 .portal:hover {
-  transform:translate(-50%, -50%) scale(1.25);
+  transform:translate(-50%, -50%) scale(1.25) !important;
   filter:brightness(1.4);
+  z-index:60;
 }
 
 @keyframes orbitFloat {

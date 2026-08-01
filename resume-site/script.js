@@ -304,7 +304,12 @@ var Chars = {
 
 // ========== CONTENT MANAGER ==========
 var ContentMgr = {
-  current: null, busy: false,
+  current: null, busy: false, safetyTimer: null,
+
+  resetBusy: function() {
+    this.busy = false;
+    this.safetyTimer = null;
+  },
 
   init: function() {
     this.placePortals();
@@ -313,9 +318,12 @@ var ContentMgr = {
     document.querySelectorAll('.portal').forEach(function(p) {
       p.addEventListener('click', function(e) { e.stopPropagation(); if (!self.busy) self.open(p.getAttribute('data-section')); });
       p.addEventListener('mouseenter', function() { AudioEngine.hoverHum(); });
+      // Touch support for mobile
+      p.addEventListener('touchend', function(e) { e.preventDefault(); e.stopPropagation(); if (!self.busy) self.open(p.getAttribute('data-section')); });
     });
     document.querySelectorAll('.back-btn').forEach(function(b) {
       b.addEventListener('click', function(e) { e.stopPropagation(); self.close(); });
+      b.addEventListener('touchend', function(e) { e.preventDefault(); e.stopPropagation(); self.close(); });
     });
     document.addEventListener('keydown', function(e) { if (e.key === 'Escape' && self.current) self.close(); });
   },
@@ -333,34 +341,56 @@ var ContentMgr = {
 
   open: function(id) {
     var self = this;
+    if (this.busy) return;
     this.busy = true;
-    AudioEngine.portalSound(true);
+    // Safety: auto-reset busy after 2s in case of error
+    if (this.safetyTimer) clearTimeout(this.safetyTimer);
+    this.safetyTimer = setTimeout(function() { self.resetBusy(); }, 2000);
+    try { AudioEngine.portalSound(true); } catch(e) {}
     var overlay = document.getElementById('portal-overlay');
+    if (!overlay) { this.resetBusy(); return; }
     overlay.classList.add('active');
     setTimeout(function() {
-      var hub = document.getElementById('portal-hub');
-      if (hub) hub.style.display = 'none';
-      document.querySelectorAll('.overlay-panel').forEach(function(p) { p.classList.remove('active', 'closing'); });
-      var panel = document.getElementById('overlay-' + id);
-      if (panel) { panel.classList.add('active'); panel.querySelector('.overlay-scroll').scrollTop = 0; self.current = id; }
-      setTimeout(function() { overlay.classList.remove('active'); self.busy = false; }, 200);
+      try {
+        var hub = document.getElementById('portal-hub');
+        if (hub) hub.style.display = 'none';
+        document.querySelectorAll('.overlay-panel').forEach(function(p) { p.classList.remove('active', 'closing'); });
+        var panel = document.getElementById('overlay-' + id);
+        if (panel) { panel.classList.add('active'); var scroll = panel.querySelector('.overlay-scroll'); if (scroll) scroll.scrollTop = 0; self.current = id; }
+        setTimeout(function() {
+          try { overlay.classList.remove('active'); } catch(e) {}
+          self.resetBusy();
+        }, 200);
+      } catch(e) {
+        self.resetBusy();
+      }
     }, 350);
   },
 
   close: function() {
     var self = this;
-    if (!this.current) return;
+    if (!this.current || this.busy) return;
     this.busy = true;
-    AudioEngine.portalSound(false);
+    if (this.safetyTimer) clearTimeout(this.safetyTimer);
+    this.safetyTimer = setTimeout(function() { self.resetBusy(); }, 2000);
+    try { AudioEngine.portalSound(false); } catch(e) {}
     var overlay = document.getElementById('portal-overlay');
+    if (!overlay) { this.resetBusy(); return; }
     overlay.classList.add('active');
     var panel = document.getElementById('overlay-' + this.current);
-    if (panel) { panel.classList.remove('active'); panel.classList.add('closing'); setTimeout(function() { panel.classList.remove('closing'); }, 400); }
+    if (panel) { panel.classList.remove('active'); panel.classList.add('closing'); setTimeout(function() { try { panel.classList.remove('closing'); } catch(e) {} }, 400); }
     setTimeout(function() {
-      var hub = document.getElementById('portal-hub');
-      if (hub) hub.style.display = '';
-      self.current = null;
-      setTimeout(function() { overlay.classList.remove('active'); self.busy = false; }, 200);
+      try {
+        var hub = document.getElementById('portal-hub');
+        if (hub) hub.style.display = '';
+        self.current = null;
+        setTimeout(function() {
+          try { overlay.classList.remove('active'); } catch(e) {}
+          self.resetBusy();
+        }, 200);
+      } catch(e) {
+        self.resetBusy();
+      }
     }, 350);
   }
 };
