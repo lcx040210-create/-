@@ -3,6 +3,12 @@
 // Portal Hub + Characters + Audio + i18n
 // ============================================================
 
+// Global error catcher
+window.onerror = function(msg, url, line) {
+  var el = document.getElementById('character-bubbles');
+  if (el) el.innerHTML = '<div style="position:fixed;top:10px;left:10px;z-index:999;background:red;color:#fff;padding:10px;font-size:12px;max-width:90%;">JS Error: ' + msg + ' (line ' + line + ')</div>';
+};
+
 // ========== AUDIO ENGINE ==========
 const AudioEngine = {
   ctx: null, enabled: false, melodyTimer: null,
@@ -382,10 +388,21 @@ function initSound() {
 
 // ========== BOOT ==========
 document.addEventListener('DOMContentLoaded', function() {
-  Starfield.init();
-  Chars.init();
-  I18nEngine.init();
-  ContentMgr.init();
-  initSound();
+  try { Starfield.init(); console.log('1/5 Starfield OK'); }
+  catch(e) { console.error('Starfield FAIL:', e); window.onerror('Starfield: '+e.message, '', 0); }
+
+  try { Chars.init(); console.log('2/5 Chars OK'); }
+  catch(e) { console.error('Chars FAIL:', e); window.onerror('Chars: '+e.message, '', 0); }
+
+  try { I18nEngine.init(); console.log('3/5 I18n OK'); }
+  catch(e) { console.error('I18n FAIL:', e); window.onerror('I18n: '+e.message, '', 0); }
+
+  try { ContentMgr.init(); console.log('4/5 ContentMgr OK'); }
+  catch(e) { console.error('ContentMgr FAIL:', e); window.onerror('ContentMgr: '+e.message, '', 0); }
+
+  try { initSound(); console.log('5/5 Sound OK'); }
+  catch(e) { console.error('Sound FAIL:', e); window.onerror('Sound: '+e.message, '', 0); }
+
   setTimeout(function() { ContentMgr.placePortals(); }, 600);
+  console.log('All modules initialized');
 });
