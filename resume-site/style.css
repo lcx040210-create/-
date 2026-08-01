@@ -80,15 +80,33 @@ body {
   box-shadow: 0 0 20px rgba(151, 206, 76, 0.08), inset 0 0 20px rgba(151, 206, 76, 0.02);
 }
 
-/* Four-corner decorations */
+/* Four-corner decorations. Each .card-corners only has ::before and ::after,
+   so each pseudo-element draws a pair of corners. The prior
+   letter-spacing: calc(100% - 24px) was invalid (percentages are not allowed
+   for letter-spacing), so each corner is drawn as an L-bracket from a pair of
+   linear-gradients. */
 .card-corners::before,
 .card-corners::after {
-  position: absolute; color: rgba(151, 206, 76, 0.5);
-  font-family: monospace; font-size: 0.75rem;
+  content: '';
+  position: absolute;
   pointer-events: none;
+  height: 12px;
+  background-image:
+    linear-gradient(rgba(151, 206, 76, 0.5) 0 100%),
+    linear-gradient(rgba(151, 206, 76, 0.5) 0 100%),
+    linear-gradient(rgba(151, 206, 76, 0.5) 0 100%),
+    linear-gradient(rgba(151, 206, 76, 0.5) 0 100%);
+  background-repeat: no-repeat;
+  background-size: 12px 2px, 2px 12px, 12px 2px, 2px 12px;
 }
-.card-corners::before { content: '┌┐'; top: 6px; left: 10px; letter-spacing: calc(100% - 24px); }
-.card-corners::after  { content: '└┘'; bottom: 6px; left: 10px; letter-spacing: calc(100% - 24px); }
+.card-corners::before {
+  top: 6px; left: 10px; right: 10px;
+  background-position: 0 0, 0 0, 100% 0, 100% 0;
+}
+.card-corners::after {
+  bottom: 6px; left: 10px; right: 10px;
+  background-position: 0 100%, 0 100%, 100% 100%, 100% 100%;
+}
 
 /* Scan line effect on section titles */
 .scan-line {
@@ -132,6 +150,7 @@ body {
   display: flex; justify-content: space-between; align-items: center;
   padding: 12px 32px;
   background: rgba(10, 14, 23, 0.92);
+  -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid rgba(151, 206, 76, 0.2);
   z-index: 100;

@@ -1,6 +1,11 @@
 // ========== I18N ENGINE ==========
 const I18nEngine = {
-  currentLang: localStorage.getItem('resume-lang') || 'en',
+  // localStorage can throw (e.g. blocked cookies / privacy mode), which would
+  // otherwise kill the whole script at load. Fall back to 'en'.
+  currentLang: (() => {
+    try { return localStorage.getItem('resume-lang') || 'en'; }
+    catch (e) { return 'en'; }
+  })(),
 
   init() {
     this.applyLang(this.currentLang);
@@ -8,7 +13,13 @@ const I18nEngine = {
     document.getElementById('lang-toggle').addEventListener('click', () => this.toggle());
   },
 
+  // Debounce flag: prevents re-entrant toggles while the portal animation
+  // (300ms expand + 150ms collapse) is still running.
+  busy: false,
+
   toggle() {
+    if (this.busy) return;
+    this.busy = true;
     const overlay = document.getElementById('portal-overlay');
     // Phase 1: expand portal
     overlay.classList.add('active');
@@ -16,13 +27,15 @@ const I18nEngine = {
     setTimeout(() => {
       // Phase 2: swap all text
       this.currentLang = this.currentLang === 'en' ? 'zh' : 'en';
-      localStorage.setItem('resume-lang', this.currentLang);
+      try { localStorage.setItem('resume-lang', this.currentLang); }
+      catch (e) { /* storage unavailable — language still switches in-memory */ }
       this.applyLang(this.currentLang);
       this.updateToggleButton();
 
       // Phase 3: collapse portal
       setTimeout(() => {
         overlay.classList.remove('active');
+        this.busy = false;
       }, 150);
     }, 300);
   },
@@ -43,30 +56,16 @@ const I18nEngine = {
       }
     });
 
-    // Skill panels carry their heading text on the panel itself as
-    // data-en-title / data-zh-title; push it into the panel's <h3> so the
-    // title switches language along with everything else.
-    document.querySelectorAll('.skill-panel').forEach(panel => {
-      const title = panel.getAttribute(`data-${lang}-title`);
-      const h3 = panel.querySelector('h3');
-      if (title && h3) {
-        h3.textContent = title;
-      }
-    });
-
-    // Handle structured content (lists with pipe-delimited items)
+    // Handle structured content (lists with pipe-delimited items). This covers
+    // every list carrying data-en/data-zh, including .exp-bullets ULs. Bullet
+    // text may contain **strong** markdown that must become <strong> tags
+    // instead of rendering as literal asterisks.
     document.querySelectorAll(`[data-${lang}]`).forEach(el => {
       const data = el.getAttribute(`data-${lang}`);
       if (data && el.tagName === 'UL') {
-        el.innerHTML = data.split('|').map(item => `<li>${item.trim()}</li>`).join('');
-      }
-    });
-
-    // Handle bullet lists on experience cards
-    document.querySelectorAll('.exp-bullets').forEach(ul => {
-      const data = ul.getAttribute(`data-${lang}`);
-      if (data) {
-        ul.innerHTML = data.split('|').map(item => `<li>${item.trim()}</li>`).join('');
+        el.innerHTML = data.split('|')
+          .map(item => `<li>${item.trim().replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')}</li>`)
+          .join('');
       }
     });
   },
@@ -395,8 +394,7 @@ const EasterEggs = {
       if (Math.random() > 0.85) { // 15% chance every 3 seconds
         const name = document.querySelector('.hero-name');
         if (!name) return; // guard: name must exist (Task 1 HTML)
-        const original = name.textContent;
-        const glitchText = original.split('').map(c =>
+        const glitchText = name.textContent.split('').map(c =>
           Math.random() > 0.9 ? String.fromCharCode(33 + Math.random() * 90) : c
         ).join('');
         name.textContent = glitchText;
