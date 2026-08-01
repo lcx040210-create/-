@@ -318,3 +318,106 @@ class PixelCharacter {
 // point. Task 6 will replace this with the combined I18n/Canvas/Eggs/Scroll
 // initializer.
 document.addEventListener('DOMContentLoaded', () => PortalCanvas.init());
+
+// ========== EASTER EGG SYSTEM ==========
+const EasterEggs = {
+  quotes: {
+    en: [
+      "This resume is *burp* the best in the multiverse, Morty!",
+      "You gotta pump those numbers up, those are rookie numbers!",
+      "Wubba lubba dub dub! Hire this guy!",
+      "I turned myself into a resume, Morty! I'm Resume Rick!",
+      "In an infinite multiverse, this is the best hire you'll make.",
+      "Don't think about it, just hire him, Morty!"
+    ],
+    zh: [
+      "这份简历是*嗝*多元宇宙里最棒的，Morty！",
+      "你得把那些数字搞上去，这都是菜鸟水平！",
+      "Wubba lubba dub dub！快雇这个人！",
+      "我把自己变成了一份简历，Morty！我是简历 Rick！",
+      "在无限多元宇宙里，这是你能做出的最好招聘。",
+      "别想了，就雇他吧，Morty！"
+    ]
+  },
+  bubbleTimer: null,
+
+  init() {
+    this.scheduleBubble();
+    this.initPortalGunCursor();
+    this.initTitleGlitch();
+  },
+
+  scheduleBubble() {
+    const delay = Math.random() * 15000 + 15000; // 15-30 seconds
+    this.bubbleTimer = setTimeout(() => {
+      this.showBubble();
+      this.scheduleBubble();
+    }, delay);
+  },
+
+  showBubble() {
+    const layer = document.getElementById('easter-egg-layer');
+    if (!layer) return; // guard: layer must exist (Task 1 HTML)
+
+    const lang = I18nEngine.getLang();
+    const quotes = this.quotes[lang] || this.quotes.en;
+    const quote = quotes[Math.floor(Math.random() * quotes.length)];
+
+    const bubble = document.createElement('div');
+    bubble.className = 'rick-bubble';
+    bubble.innerHTML = `
+      <div class="bubble-avatar">🧪</div>
+      <div class="bubble-text">${quote}</div>
+    `;
+    layer.appendChild(bubble);
+
+    // Float up and fade out
+    setTimeout(() => {
+      bubble.style.animation = 'floatUp 1.5s ease forwards';
+      setTimeout(() => bubble.remove(), 1500);
+    }, 5000);
+  },
+
+  // Portal gun cursor in hero area
+  initPortalGunCursor() {
+    const hero = document.getElementById('hero');
+    if (!hero) return; // guard: hero must exist (Task 1 HTML)
+    const portalCursorSVG = `data:image/svg+xml,${encodeURIComponent(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">' +
+      '<circle cx="12" cy="12" r="6" fill="none" stroke="#97ce4c" stroke-width="2"/>' +
+      '<circle cx="12" cy="12" r="2" fill="#97ce4c"/>' +
+      '<line x1="12" y1="6" x2="12" y2="2" stroke="#97ce4c" stroke-width="1.5"/>' +
+      '<line x1="18" y1="12" x2="22" y2="12" stroke="#97ce4c" stroke-width="1.5"/>' +
+      '</svg>'
+    )}`;
+
+    hero.addEventListener('mouseenter', () => {
+      hero.style.cursor = `url('${portalCursorSVG}') 12 12, auto`;
+    });
+    hero.addEventListener('mouseleave', () => {
+      hero.style.cursor = 'default';
+    });
+  },
+
+  // Random title character glitch (Rick's influence)
+  initTitleGlitch() {
+    setInterval(() => {
+      if (Math.random() > 0.85) { // 15% chance every 3 seconds
+        const name = document.querySelector('.hero-name');
+        if (!name) return; // guard: name must exist (Task 1 HTML)
+        const original = name.textContent;
+        const glitchText = original.split('').map(c =>
+          Math.random() > 0.9 ? String.fromCharCode(33 + Math.random() * 90) : c
+        ).join('');
+        name.textContent = glitchText;
+        setTimeout(() => { name.textContent = I18nEngine.getLang() === 'zh' ?
+          name.getAttribute('data-zh') : name.getAttribute('data-en'); }, 150);
+      }
+    }, 3000);
+  }
+};
+
+// Temporary standalone init so the site works without Task 6's unified entry
+// point. Task 6 will replace this with the combined I18n/Canvas/Eggs/Scroll
+// initializer.
+document.addEventListener('DOMContentLoaded', () => EasterEggs.init());

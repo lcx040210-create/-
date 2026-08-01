@@ -382,3 +382,21 @@ footer {
   pointer-events: none;
   z-index: 300;
 }
+
+/* --------------------------------------------------------------------------
+   Step 11: Rick 吐槽气泡 (Task 5 easter egg)
+   -------------------------------------------------------------------------- */
+/* Rick bubble — appears bottom-right, floats up and fades after 5s (JS
+   swaps the animation to floatUp and removes the node once it finishes). */
+.rick-bubble {
+  position: fixed; bottom: 80px; right: 20px; z-index: 180;
+  display: flex; align-items: flex-start; gap: 10px;
+  max-width: 320px; padding: 14px 18px;
+  background: var(--lab-gray);
+  border: 1px solid var(--portal-green);
+  border-radius: 12px;
+  box-shadow: 0 0 20px rgba(151, 206, 76, 0.15);
+  animation: fadeInUp 0.4s ease;
+}
+.bubble-avatar { font-size: 1.5rem; }
+.bubble-text { font-size: 0.8rem; color: var(--text-dim); line-height: 1.5; font-style: italic; }
