@@ -91,11 +91,6 @@ const I18nEngine = {
   getLang() { return this.currentLang; }
 };
 
-// Temporary standalone init so the site works without Task 6's unified entry
-// point. Task 6 will replace this with the combined I18n/Canvas/Eggs/Scroll
-// initializer.
-document.addEventListener('DOMContentLoaded', () => I18nEngine.init());
-
 // ========== CANVAS PARTICLE BACKGROUND ==========
 const PortalCanvas = {
   canvas: null, ctx: null,
@@ -314,11 +309,6 @@ class PixelCharacter {
   }
 }
 
-// Temporary standalone init so the site works without Task 6's unified entry
-// point. Task 6 will replace this with the combined I18n/Canvas/Eggs/Scroll
-// initializer.
-document.addEventListener('DOMContentLoaded', () => PortalCanvas.init());
-
 // ========== EASTER EGG SYSTEM ==========
 const EasterEggs = {
   quotes: {
@@ -417,7 +407,44 @@ const EasterEggs = {
   }
 };
 
-// Temporary standalone init so the site works without Task 6's unified entry
-// point. Task 6 will replace this with the combined I18n/Canvas/Eggs/Scroll
-// initializer.
-document.addEventListener('DOMContentLoaded', () => EasterEggs.init());
+// ========== SCROLL EFFECTS ==========
+const ScrollEffects = {
+  init() {
+    this.initProgressBar();
+    this.initFadeInObserver();
+  },
+
+  initProgressBar() {
+    const bar = document.getElementById('scroll-progress');
+    window.addEventListener('scroll', () => {
+      const scrollTop = window.scrollY;
+      const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+      const progress = docHeight > 0 ? (scrollTop / docHeight) * 100 : 0;
+      bar.style.height = `${Math.min(progress, 100)}%`;
+    }, { passive: true });
+  },
+
+  initFadeInObserver() {
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('animate-in');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+
+    document.querySelectorAll('.console-card').forEach(card => {
+      observer.observe(card);
+    });
+  }
+};
+
+// ========== INIT ==========
+document.addEventListener('DOMContentLoaded', () => {
+  I18nEngine.init();
+  PortalCanvas.init();
+  EasterEggs.init();
+  ScrollEffects.init();
+  console.log('🧪 Resume site initialized — Wubba lubba dub dub!');
+});
