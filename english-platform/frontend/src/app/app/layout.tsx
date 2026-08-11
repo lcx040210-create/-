@@ -34,12 +34,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               <>
                 <Link href="/app/packages" className="text-sm text-gray-500 hover:text-blue-600">课包</Link>
                 <Link href="/app/teachers" className="text-sm text-gray-500 hover:text-blue-600">找老师</Link>
+                <Link href="/app/bookings" className="text-sm text-gray-500 hover:text-blue-600">预约</Link>
                 <Link href="/app/me" className="text-sm text-gray-500 hover:text-blue-600">我的</Link>
               </>
             )}
             {user?.role === 'teacher' && (
               <>
                 <Link href="/app/profile" className="text-sm text-gray-500 hover:text-blue-600">编辑资料</Link>
+                <Link href="/app/schedule" className="text-sm text-gray-500 hover:text-blue-600">时间表</Link>
+                <Link href="/app/bookings" className="text-sm text-gray-500 hover:text-blue-600">预约</Link>
                 <Link href="/app/me" className="text-sm text-gray-500 hover:text-blue-600">我的</Link>
               </>
             )}
