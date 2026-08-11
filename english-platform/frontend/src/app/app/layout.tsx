@@ -30,10 +30,21 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <Link href="/app" className="text-lg font-bold text-blue-600">英语教学平台</Link>
           <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-600">
+            {user?.role === 'student' && (
+              <>
+                <Link href="/app/teachers" className="text-sm text-gray-500 hover:text-blue-600">找老师</Link>
+                <Link href="/app/me" className="text-sm text-gray-500 hover:text-blue-600">我的</Link>
+              </>
+            )}
+            {user?.role === 'teacher' && (
+              <>
+                <Link href="/app/profile" className="text-sm text-gray-500 hover:text-blue-600">编辑资料</Link>
+                <Link href="/app/me" className="text-sm text-gray-500 hover:text-blue-600">我的</Link>
+              </>
+            )}
+            <span className="text-sm text-gray-400">
               {user?.role === 'teacher' ? (user?.teacherProfile?.display_name || user?.name) : user?.name}
             </span>
-            <Link href="/app" className="text-sm text-gray-500 hover:text-blue-600">首页</Link>
           </div>
         </div>
       </nav>

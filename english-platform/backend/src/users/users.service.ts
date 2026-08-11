@@ -1,10 +1,12 @@
-import { Injectable, ConflictException } from '@nestjs/common';
+import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { User, UserStatus, UserRole } from './entities/user.entity';
 import { TeacherProfile, ReviewStatus } from './entities/teacher-profile.entity';
 import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateTeacherProfileDto } from './dto/update-teacher-profile.dto';
+import { ReviewTeacherDto } from './dto/review-teacher.dto';
 
 @Injectable()
 export class UsersService {
@@ -53,5 +55,63 @@ export class UsersService {
     }
 
     return saved;
+  }
+
+  async updateTeacherProfile(userId: string, dto: UpdateTeacherProfileDto) {
+    const profile = await this.teacherProfileRepository.findOne({ where: { user_id: userId } });
+    if (!profile) throw new NotFoundException('老师资料不存在');
+
+    Object.assign(profile, dto);
+    return this.teacherProfileRepository.save(profile);
+  }
+
+  async listTeachers(filters: { exam_types?: string[]; skills?: string[] }) {
+    const qb = this.teacherProfileRepository
+      .createQueryBuilder('profile')
+      .leftJoinAndSelect('profile.user', 'user')
+      .where('profile.review_status = :status', { status: ReviewStatus.APPROVED });
+
+    if (filters.exam_types?.length) {
+      qb.andWhere('profile.exam_types @> :examTypes', { examTypes: JSON.stringify(filters.exam_types) });
+    }
+    if (filters.skills?.length) {
+      qb.andWhere('profile.skills @> :skills', { skills: JSON.stringify(filters.skills) });
+    }
+
+    const profiles = await qb.getMany();
+    return profiles.map((p) => ({
+      id: p.id,
+      display_name: p.display_name,
+      avatar_url: p.avatar_url,
+      intro: p.intro,
+      exam_types: p.exam_types,
+      skills: p.skills,
+      tags: p.tags,
+      review_status: p.review_status,
+    }));
+  }
+
+  async listPendingTeachers() {
+    return this.teacherProfileRepository
+      .createQueryBuilder('profile')
+      .leftJoinAndSelect('profile.user', 'user')
+      .where('profile.review_status = :status', { status: ReviewStatus.PENDING })
+      .getMany();
+  }
+
+  async reviewTeacher(profileId: string, dto: ReviewTeacherDto) {
+    const profile = await this.teacherProfileRepository.findOne({ where: { id: profileId } });
+    if (!profile) throw new NotFoundException('老师资料不存在');
+
+    profile.review_status = dto.review_status;
+    if (dto.base_rate !== undefined) {
+      profile.base_rate = dto.base_rate;
+    }
+
+    if (dto.review_status === ReviewStatus.APPROVED) {
+      await this.usersRepository.update(profile.user_id, { status: UserStatus.ACTIVE });
+    }
+
+    return this.teacherProfileRepository.save(profile);
   }
 }
