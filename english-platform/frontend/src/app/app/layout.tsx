@@ -32,6 +32,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <div className="flex items-center gap-4">
             {user?.role === 'student' && (
               <>
+                <Link href="/app/packages" className="text-sm text-gray-500 hover:text-blue-600">课包</Link>
                 <Link href="/app/teachers" className="text-sm text-gray-500 hover:text-blue-600">找老师</Link>
                 <Link href="/app/me" className="text-sm text-gray-500 hover:text-blue-600">我的</Link>
               </>

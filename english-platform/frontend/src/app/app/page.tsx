@@ -33,6 +33,7 @@ export default function Dashboard() {
 
       {user.role === 'student' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <QuickLink href="/app/packages" title="购买课包" desc="查看课包，选择适合你的套餐" />
           <QuickLink href="/app/teachers" title="找老师" desc="浏览老师，选择适合你的课程" />
           <QuickLink href="/app/me" title="我的课时" desc="查看课时余额和预约记录" />
         </div>
