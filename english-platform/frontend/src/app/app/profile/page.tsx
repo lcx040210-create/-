@@ -3,8 +3,8 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
+import Button from '@/components/ui/Button';
+import Input from '@/components/ui/Input';
 import { AvatarUpload } from '@/components/ui/AvatarUpload';
 
 const EXAM_TYPES = [
@@ -72,84 +72,93 @@ export default function ProfilePage() {
 
   return (
     <div className="max-w-2xl">
-      <h1 className="text-2xl font-bold mb-6">编辑资料</h1>
+      <h1 className="page-title mb-2">编辑资料</h1>
+      <p className="text-sm text-gray-400 mb-8">完善你的个人资料，吸引更多学生</p>
 
-      <div className="mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-2">头像</label>
-        <AvatarUpload
-          currentUrl={form.avatar_url}
-          onUploaded={(url) => setForm((f) => ({ ...f, avatar_url: url }))}
-        />
-      </div>
-
-      <Input
-        label="对外展示名"
-        value={form.display_name}
-        onChange={(e) => setForm((f) => ({ ...f, display_name: e.target.value }))}
-        className="mb-4"
-      />
-
-      <div className="mb-4">
-        <label className="block text-sm font-medium text-gray-700 mb-1">个人简介</label>
-        <textarea
-          value={form.intro}
-          onChange={(e) => setForm((f) => ({ ...f, intro: e.target.value }))}
-          rows={4}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          placeholder="介绍你的教学经验、风格..."
-        />
-      </div>
-
-      <div className="mb-4">
-        <label className="block text-sm font-medium text-gray-700 mb-2">擅长考试类型</label>
-        <div className="flex gap-2 flex-wrap">
-          {EXAM_TYPES.map((et) => (
-            <Chip
-              key={et.value}
-              label={et.label}
-              active={form.exam_types.includes(et.value)}
-              onClick={() => setForm((f) => ({ ...f, exam_types: toggle(f.exam_types, et.value) }))}
-            />
-          ))}
+      <div className="card p-6 space-y-6">
+        {/* Avatar */}
+        <div>
+          <label className="form-label">头像</label>
+          <AvatarUpload
+            currentUrl={form.avatar_url}
+            onUploaded={(url) => setForm((f) => ({ ...f, avatar_url: url }))}
+          />
         </div>
-      </div>
 
-      <div className="mb-4">
-        <label className="block text-sm font-medium text-gray-700 mb-2">擅长技能</label>
-        <div className="flex gap-2 flex-wrap">
-          {SKILLS.map((s) => (
-            <Chip
-              key={s.value}
-              label={s.label}
-              active={form.skills.includes(s.value)}
-              onClick={() => setForm((f) => ({ ...f, skills: toggle(f.skills, s.value) }))}
-            />
-          ))}
-        </div>
-      </div>
-
-      <div className="mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-1">标签（用逗号分隔）</label>
-        <input
-          type="text"
-          value={form.tags.join(', ')}
-          onChange={(e) =>
-            setForm((f) => ({
-              ...f,
-              tags: e.target.value.split(',').map((t) => t.trim()).filter(Boolean),
-            }))
-          }
-          placeholder="如：口语专家, 7分保底, 十年教龄"
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        <Input
+          label="对外展示名"
+          value={form.display_name}
+          onChange={(e) => setForm((f) => ({ ...f, display_name: e.target.value }))}
+          placeholder="如 Luna老师"
         />
-      </div>
 
-      {message && (
-        <p className={`text-sm mb-4 ${message === '保存成功' ? 'text-green-600' : 'text-red-500'}`}>
-          {message}
-        </p>
-      )}
-      <Button onClick={handleSave} disabled={saving}>{saving ? '保存中...' : '保存'}</Button>
+        <div>
+          <label className="form-label">个人简介</label>
+          <textarea
+            value={form.intro}
+            onChange={(e) => setForm((f) => ({ ...f, intro: e.target.value }))}
+            rows={4}
+            className="form-input"
+            placeholder="介绍你的教学经验、风格、成果..."
+          />
+        </div>
+
+        <div>
+          <label className="form-label">擅长考试类型</label>
+          <div className="flex gap-2 flex-wrap">
+            {EXAM_TYPES.map((et) => (
+              <Chip
+                key={et.value}
+                label={et.label}
+                active={form.exam_types.includes(et.value)}
+                onClick={() => setForm((f) => ({ ...f, exam_types: toggle(f.exam_types, et.value) }))}
+              />
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label className="form-label">擅长技能</label>
+          <div className="flex gap-2 flex-wrap">
+            {SKILLS.map((s) => (
+              <Chip
+                key={s.value}
+                label={s.label}
+                active={form.skills.includes(s.value)}
+                onClick={() => setForm((f) => ({ ...f, skills: toggle(f.skills, s.value) }))}
+              />
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label className="form-label">标签（用逗号分隔）</label>
+          <input
+            type="text"
+            value={form.tags.join(', ')}
+            onChange={(e) =>
+              setForm((f) => ({
+                ...f,
+                tags: e.target.value.split(',').map((t) => t.trim()).filter(Boolean),
+              }))
+            }
+            placeholder="如：口语专家, 7分保底, 十年教龄"
+            className="form-input"
+          />
+        </div>
+
+        {message && (
+          <div className={`px-4 py-2.5 rounded-xl text-sm font-medium ${
+            message === '保存成功' ? 'bg-success-50 text-success-700' : 'bg-red-50 text-red-600'
+          }`}>
+            {message}
+          </div>
+        )}
+
+        <Button onClick={handleSave} loading={saving} size="lg">
+          保存资料
+        </Button>
+      </div>
     </div>
   );
 }
@@ -159,8 +168,10 @@ function Chip({ label, active, onClick }: { label: string; active: boolean; onCl
     <button
       type="button"
       onClick={onClick}
-      className={`px-3 py-1.5 text-sm rounded-full border transition-colors ${
-        active ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300 hover:border-blue-400'
+      className={`px-4 py-2 text-sm rounded-xl font-medium transition-all duration-200 ${
+        active
+          ? 'bg-primary-600 text-white shadow-sm'
+          : 'bg-gray-50 text-gray-600 border-2 border-transparent hover:border-primary-300 hover:bg-primary-50'
       }`}
     >
       {label}
