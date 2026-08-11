@@ -27,6 +27,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <Link href="/admin" className="text-sm text-gray-300 hover:text-white">概览</Link>
             <Link href="/admin/teachers" className="text-sm text-gray-300 hover:text-white">老师审核</Link>
             <Link href="/admin/packages" className="text-sm text-gray-300 hover:text-white">课包管理</Link>
+            <Link href="/admin/settlements" className="text-sm text-gray-300 hover:text-white">结算管理</Link>
           </div>
           <div className="flex items-center gap-4">
             <span className="text-sm text-gray-400">{user.name}</span>
