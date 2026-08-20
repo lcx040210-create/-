@@ -51,5 +51,75 @@ namespace OneClickAntivirus
             }
             return null;
         }
+
+        public static ScanResult RunFullScan()
+        {
+            string mpCmd = FindMpCmdRun();
+            if (mpCmd == null)
+                return new ScanResult { Status = ScanStatus.NotFound, ExitCode = -1, Message = "❌ 未找到 Windows Defender 扫描组件(MpCmdRun.exe)。" };
+
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = mpCmd,
+                Arguments = "-Scan -ScanType 2",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+
+            using (System.Diagnostics.Process p = System.Diagnostics.Process.Start(psi))
+            {
+                string stdout = p.StandardOutput.ReadToEnd();
+                string stderr = p.StandardError.ReadToEnd();
+                p.WaitForExit();
+
+                ScanResult result = MapExitCode(p.ExitCode);
+                if (result.Status == ScanStatus.ThreatsFound)
+                    result.Threats = GetRecentThreats();
+                return result;
+            }
+        }
+
+        private static List<ThreatInfo> GetRecentThreats()
+        {
+            var list = new List<ThreatInfo>();
+            string script = "$ErrorActionPreference='SilentlyContinue'; Get-MpThreatDetection | Select-Object -First 50 | ForEach-Object { $n=(Get-MpThreat -ThreatID $_.ThreatID).ThreatName; Write-Output ($n + \"`t\" + ($_.Resources -join '; ') + \"`t\" + $_.InitialDetectionTime.ToString('yyyy-MM-dd HH:mm')) }";
+
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                Arguments = "-NoProfile -NonInteractive -Command \"" + script + "\"",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+
+            using (System.Diagnostics.Process p = System.Diagnostics.Process.Start(psi))
+            {
+                string output = p.StandardOutput.ReadToEnd();
+                p.WaitForExit();
+                foreach (string line in output.Split('\n'))
+                {
+                    ThreatInfo t = ParseThreatLine(line);
+                    if (t != null) list.Add(t);
+                }
+            }
+            return list;
+        }
+
+        public static ThreatInfo ParseThreatLine(string line)
+        {
+            if (line == null) return null;
+            line = line.Trim('\r', '\n', ' ', '\t');
+            if (line.Length == 0) return null;
+            string[] parts = line.Split('\t');
+            var t = new ThreatInfo();
+            t.Name = parts.Length > 0 ? parts[0] : "";
+            t.Path = parts.Length > 1 ? parts[1] : "";
+            t.DetectedAt = parts.Length > 2 ? parts[2] : "";
+            return t;
+        }
     }
 }
