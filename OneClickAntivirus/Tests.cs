@@ -26,6 +26,10 @@ namespace OneClickAntivirus
             Check(err.Status == ScanStatus.Error, "退出码 5 → 出错");
             Check(err.Message.Contains("5"), "退出码 5 文案");
 
+            string p = DefenderScanner.FindMpCmdRun();
+            Check(p != null, "FindMpCmdRun 返回路径");
+            Check(p != null && System.IO.File.Exists(p), "MpCmdRun 路径真实存在");
+
             Console.WriteLine(failures == 0 ? "ALL PASS" : (failures + " FAILED"));
             Environment.Exit(failures);
         }

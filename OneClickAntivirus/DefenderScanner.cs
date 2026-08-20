@@ -34,5 +34,22 @@ namespace OneClickAntivirus
                     return new ScanResult { Status = ScanStatus.Error, ExitCode = code, Message = "❌ 扫描出错(退出码 " + code + ")。" };
             }
         }
+
+        public static string FindMpCmdRun()
+        {
+            string a = @"C:\Program Files\Windows Defender\MpCmdRun.exe";
+            if (System.IO.File.Exists(a)) return a;
+
+            string platform = @"C:\ProgramData\Microsoft\Windows Defender\Platform";
+            if (System.IO.Directory.Exists(platform))
+            {
+                foreach (string dir in System.IO.Directory.GetDirectories(platform))
+                {
+                    string exe = System.IO.Path.Combine(dir, "MpCmdRun.exe");
+                    if (System.IO.File.Exists(exe)) return exe;
+                }
+            }
+            return null;
+        }
     }
 }
