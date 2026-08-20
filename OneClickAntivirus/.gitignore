@@ -1,2 +1,3 @@
-# 测试构建产物
+# 构建产物(可用 build.bat / test.bat 重新生成)
+OneClickAntivirus.exe
 RunTests.exe
