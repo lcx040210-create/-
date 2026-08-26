@@ -35,6 +35,16 @@ namespace OneClickAntivirus
             }
         }
 
+        public static ScanResult MapScanResult(int exitCode, string output)
+        {
+            string o = output == null ? "" : output.Trim();
+            if (o.IndexOf("Product/Feature disabled", StringComparison.OrdinalIgnoreCase) >= 0)
+                return new ScanResult { Status = ScanStatus.Error, ExitCode = exitCode, Message = "❌ Windows Defender 已被第三方杀毒软件禁用,无法扫描。请卸载第三方杀毒软件以启用 Defender,或直接使用你已安装的杀毒软件。" };
+            if (o.IndexOf("Failed with hr", StringComparison.OrdinalIgnoreCase) >= 0 || o.IndexOf("hr = 0x", StringComparison.OrdinalIgnoreCase) >= 0)
+                return new ScanResult { Status = ScanStatus.Error, ExitCode = exitCode, Message = "❌ 扫描失败:Windows Defender 引擎不可用(通常是第三方杀毒软件禁用了 Defender)。\n" + o };
+            return MapExitCode(exitCode);
+        }
+
         public static string FindMpCmdRun()
         {
             string a = @"C:\Program Files\Windows Defender\MpCmdRun.exe";
@@ -74,7 +84,7 @@ namespace OneClickAntivirus
                 string stderr = p.StandardError.ReadToEnd();
                 p.WaitForExit();
 
-                ScanResult result = MapExitCode(p.ExitCode);
+                ScanResult result = MapScanResult(p.ExitCode, stdout + "\n" + stderr);
                 if (result.Status == ScanStatus.ThreatsFound)
                     result.Threats = GetRecentThreats();
                 return result;

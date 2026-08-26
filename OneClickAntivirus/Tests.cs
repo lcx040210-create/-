@@ -37,6 +37,16 @@ namespace OneClickAntivirus
             Check(DefenderScanner.ParseThreatLine("") == null, "ParseThreatLine 空行返回 null");
             Check(DefenderScanner.ParseThreatLine(null) == null, "ParseThreatLine null 返回 null");
 
+            ScanResult failed = DefenderScanner.MapScanResult(2, "CmdTool: Failed with hr = 0x80004005.");
+            Check(failed.Status == ScanStatus.Error, "输出含 Failed → 判定为失败而非清除威胁");
+            Check(failed.Message.Contains("失败") || failed.Message.Contains("禁用"), "失败文案");
+
+            ScanResult realThreats = DefenderScanner.MapScanResult(2, "Scan starting...\nScan finished.");
+            Check(realThreats.Status == ScanStatus.ThreatsFound, "无失败字样 + 退出码 2 → 发现威胁");
+
+            ScanResult cleanEmpty = DefenderScanner.MapScanResult(0, "");
+            Check(cleanEmpty.Status == ScanStatus.Clean, "退出码 0 → 未发现威胁");
+
             Console.WriteLine(failures == 0 ? "ALL PASS" : (failures + " FAILED"));
             Environment.Exit(failures);
         }
