@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Saul Goodman | Attorney at Law</title>
+  <link rel="stylesheet" href="styles/main.css">
+</head>
+<body>
+  <!-- 注册弹框 -->
+  <div id="register-modal" class="modal hidden">
+    <div class="modal-card">
+      <h2>HOLD ON. WHO AM I REPRESENTING?</h2>
+      <p>Tell me who you are before we talk. It's confidential. Probably.</p>
+      <form id="register-form">
+        <input id="username" name="username" type="text" placeholder="Your name (required)" required minlength="1" maxlength="40">
+        <input id="email" name="email" type="text" placeholder="Your email (optional)" maxlength="100">
+        <button type="submit">Let's do this</button>
+      </form>
+      <p id="register-error" class="error hidden"></p>
+    </div>
+  </div>
+
+  <!-- Hero -->
+  <header id="hero">
+    <p class="as-seen-on">★ AS SEEN ON TV ★</p>
+    <h1 class="mega">DID YOU KNOW YOU HAVE RIGHTS?</h1>
+    <h2 class="mega sub">THE CONSTITUTION SAYS YOU DO!</h2>
+    <img id="hero-img" src="images/saul-hero.jpg" alt="Saul Goodman"
+         onerror="this.onerror=null;this.src='images/saul-hero.svg'">
+    <a href="#game" class="btn btn-huge" id="better-call-saul">BETTER CALL SAUL!</a>
+  </header>
+
+  <!-- About -->
+  <section id="about">
+    <h2>SAUL GOODMAN, ATTORNEY AT LAW</h2>
+    <div class="photo-row">
+      <img src="images/saul-1.jpg" onerror="this.onerror=null;this.src='images/saul-1.svg'">
+      <img src="images/saul-2.jpg" onerror="this.onerror=null;this.src='images/saul-2.svg'">
+      <img src="images/saul-3.jpg" onerror="this.onerror=null;this.src='images/saul-3.svg'">
+      <img src="images/saul-4.jpg" onerror="this.onerror=null;this.src='images/saul-4.svg'">
+    </div>
+    <ul class="services">
+      <li><strong>Car accident?</strong> That wasn't your fault. Trust me.</li>
+      <li><strong>Work injury?</strong> You tripped on purpose? Even better.</li>
+      <li><strong>Criminal charges?</strong> Innocent until proven... busy.</li>
+      <li><strong>Got scammed?</strong> Let's scam them back. Legally.</li>
+      <li><strong>Divorce?</strong> Keep the dog. And the boat.</li>
+      <li><strong>White-collar crime?</strong> You mean "creative accounting."</li>
+    </ul>
+  </section>
+
+  <!-- 好评 -->
+  <section id="reviews">
+    <h2>REAL REVIEWS FROM REAL (ALLEGED) CLIENTS</h2>
+    <div id="review-carousel" class="review"></div>
+  </section>
+
+  <!-- 小游戏 -->
+  <section id="game">
+    <h2>THE SAUL HOTLINE</h2>
+    <p class="sub">A client calls. Talk them out of it like the pro you're not.</p>
+    <button id="start-game" class="btn">TAKE A CALL</button>
+    <div id="game-area" class="hidden"></div>
+    <div id="leaderboard">
+      <h3>TOP SNAKES</h3>
+      <ol id="leaderboard-list"></ol>
+    </div>
+  </section>
+
+  <!-- Call now -->
+  <footer id="call-now">
+    <h2 class="mega">CALL NOW!</h2>
+    <p class="phone">(505) 555-0100</p>
+    <div class="ticker"><span>FREE CONSULTATION</span></div>
+    <p class="disclaimer">Results not guaranteed. Billing, however, is.</p>
+    <p class="disclaimer">Parody site. Not affiliated with any actual law firm, cartel, or snack manufacturer.</p>
+  </footer>
+
+  <script type="module" src="scripts/main.js"></script>
+  <script type="module" src="scripts/game.js"></script>
+</body>
+</html>
