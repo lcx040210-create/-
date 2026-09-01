@@ -9,6 +9,7 @@ namespace OneClickAntivirus
     {
         private Button btnScan;
         private Button btnClean;
+        private Button btnDeepClean;
         private ProgressBar progressBar;
         private Label lblStatus;
         private ListBox lstResults;
@@ -19,7 +20,7 @@ namespace OneClickAntivirus
         public MainForm()
         {
             Text = "一键杀毒 · 电脑清理";
-            ClientSize = new Size(540, 500);
+            ClientSize = new Size(540, 505);
             StartPosition = FormStartPosition.CenterScreen;
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
@@ -31,7 +32,7 @@ namespace OneClickAntivirus
                 Font = new Font("Microsoft YaHei UI", 15f, FontStyle.Bold),
                 ForeColor = Color.FromArgb(30, 41, 59),
                 AutoSize = true,
-                Location = new Point(20, 18)
+                Location = new Point(20, 14)
             };
 
             Label lblSubtitle = new Label
@@ -40,20 +41,23 @@ namespace OneClickAntivirus
                 Font = new Font("Microsoft YaHei UI", 9f),
                 ForeColor = Color.Gray,
                 AutoSize = true,
-                Location = new Point(22, 48)
+                Location = new Point(22, 42)
             };
 
-            btnScan = MakeButton("🛡️ 一键全盘杀毒", Color.FromArgb(59, 130, 246), new Point(20, 80), 500);
+            btnScan = MakeButton("🛡️ 一键全盘杀毒", Color.FromArgb(59, 130, 246), new Point(20, 72), 500);
             btnScan.Click += btnScan_Click;
 
-            btnClean = MakeButton("🧹 一键清理磁盘", Color.FromArgb(34, 197, 94), new Point(20, 142), 500);
+            btnClean = MakeButton("🧹 一键清理磁盘", Color.FromArgb(34, 197, 94), new Point(20, 128), 500);
             btnClean.Click += btnClean_Click;
+
+            btnDeepClean = MakeButton("🧽 深度清理", Color.FromArgb(168, 85, 247), new Point(20, 184), 500);
+            btnDeepClean.Click += btnDeepClean_Click;
 
             progressBar = new ProgressBar
             {
                 Style = ProgressBarStyle.Blocks,
-                Size = new Size(500, 16),
-                Location = new Point(20, 212)
+                Size = new Size(500, 14),
+                Location = new Point(20, 244)
             };
 
             lblStatus = new Label
@@ -62,13 +66,13 @@ namespace OneClickAntivirus
                 AutoSize = true,
                 Font = new Font("Microsoft YaHei UI", 10f),
                 ForeColor = Color.FromArgb(30, 41, 59),
-                Location = new Point(20, 238)
+                Location = new Point(20, 266)
             };
 
             lstResults = new ListBox
             {
-                Size = new Size(500, 200),
-                Location = new Point(20, 264),
+                Size = new Size(500, 180),
+                Location = new Point(20, 290),
                 BorderStyle = BorderStyle.FixedSingle,
                 HorizontalScrollbar = true,
                 Font = new Font("Microsoft YaHei UI", 9f)
@@ -80,13 +84,14 @@ namespace OneClickAntivirus
                 AutoSize = true,
                 Font = new Font("Microsoft YaHei UI", 9f),
                 ForeColor = Color.Gray,
-                Location = new Point(20, 472)
+                Location = new Point(20, 478)
             };
 
             Controls.Add(lblTitle);
             Controls.Add(lblSubtitle);
             Controls.Add(btnScan);
             Controls.Add(btnClean);
+            Controls.Add(btnDeepClean);
             Controls.Add(progressBar);
             Controls.Add(lblStatus);
             Controls.Add(lstResults);
@@ -98,8 +103,8 @@ namespace OneClickAntivirus
             Button b = new Button
             {
                 Text = text,
-                Font = new Font("Microsoft YaHei UI", 13f, FontStyle.Bold),
-                Size = new Size(width, 54),
+                Font = new Font("Microsoft YaHei UI", 12f, FontStyle.Bold),
+                Size = new Size(width, 48),
                 Location = loc,
                 FlatStyle = FlatStyle.Flat,
                 BackColor = color,
@@ -148,6 +153,7 @@ namespace OneClickAntivirus
         {
             btnScan.Enabled = false;
             btnClean.Enabled = false;
+            btnDeepClean.Enabled = false;
             progressBar.Style = ProgressBarStyle.Marquee;
             progressBar.MarqueeAnimationSpeed = 30;
             lstResults.Items.Clear();
@@ -180,6 +186,7 @@ namespace OneClickAntivirus
                 StopHeartbeat();
                 btnScan.Enabled = true;
                 btnClean.Enabled = true;
+                btnDeepClean.Enabled = true;
             }
         }
 
@@ -187,6 +194,7 @@ namespace OneClickAntivirus
         {
             btnScan.Enabled = false;
             btnClean.Enabled = false;
+            btnDeepClean.Enabled = false;
             progressBar.Style = ProgressBarStyle.Marquee;
             progressBar.MarqueeAnimationSpeed = 30;
             lblStatus.Text = "正在清理磁盘…";
@@ -211,6 +219,15 @@ namespace OneClickAntivirus
             {
                 btnScan.Enabled = true;
                 btnClean.Enabled = true;
+                btnDeepClean.Enabled = true;
+            }
+        }
+
+        private void btnDeepClean_Click(object sender, EventArgs e)
+        {
+            using (var form = new DeepCleanForm())
+            {
+                form.ShowDialog(this);
             }
         }
     }
