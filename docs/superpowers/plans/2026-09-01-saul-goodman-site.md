@@ -739,6 +739,8 @@ function initRegisterModal() {
 
   if (window.playerId) { modal.classList.add("hidden"); return; }
 
+  modal.classList.remove("hidden"); // 首次访问（无 playerId）显示弹框
+
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     err.classList.add("hidden");
