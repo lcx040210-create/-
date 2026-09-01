@@ -71,6 +71,22 @@ namespace OneClickAntivirus
             Check(freed2 == 50, "CleanDirectory 递归清理嵌套目录 50 字节(实际 " + freed2 + ")");
             Check(!System.IO.File.Exists(System.IO.Path.Combine(tmp2, "sub", "nested.bin")), "CleanDirectory 删除嵌套文件");
 
+            Check(DeepCleaner.IsSystemDirectory(Environment.SystemDirectory), "SystemDirectory 判定为系统目录");
+            Check(DeepCleaner.IsSystemDirectory(System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "x")), "ProgramFiles 判定为系统目录");
+            Check(!DeepCleaner.IsSystemDirectory(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)), "MyDocuments 不是系统目录");
+
+            string tmp3 = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "DCT3_" + Guid.NewGuid().ToString("N"));
+            System.IO.Directory.CreateDirectory(tmp3);
+            string fa = System.IO.Path.Combine(tmp3, "a.bin");
+            string fb = System.IO.Path.Combine(tmp3, "b.bin");
+            string fc = System.IO.Path.Combine(tmp3, "c.bin");
+            System.IO.File.WriteAllBytes(fa, new byte[100]);
+            System.IO.File.WriteAllBytes(fb, new byte[100]);
+            System.IO.File.WriteAllBytes(fc, new byte[200]);
+            var sizeGroups = DeepCleaner.GroupBySize(new string[] { fa, fb, fc });
+            Check(sizeGroups.Count == 1, "只有 100 字节组有重复(实际 " + sizeGroups.Count + ")");
+            Check(sizeGroups.ContainsKey(100) && sizeGroups[100].Count == 2, "100 字节组有 2 个文件");
+
             Console.WriteLine(failures == 0 ? "ALL PASS" : (failures + " FAILED"));
             Environment.Exit(failures);
         }

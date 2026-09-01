@@ -7,7 +7,7 @@ set FW=C:\Windows\Microsoft.NET\Framework64\v4.0.30319
 "%CSC%" /nologo /target:exe /out:RunTests.exe ^
   /r:"%FW%\System.dll" ^
   /r:"%FW%\System.Core.dll" ^
-  DefenderScanner.cs DiskCleaner.cs Tests.cs
+  DefenderScanner.cs DiskCleaner.cs DeepCleaner.cs Tests.cs
 
 if %errorlevel% neq 0 ( echo TEST BUILD FAILED & exit /b 1 )
 .\RunTests.exe
