@@ -2,7 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  shuffle, drawRound, scoreAnswer, computeWinIndex, rankLabel, QUESTIONS,
+  shuffle, drawRound, scoreAnswer, computeWinIndex, rankLabel, QUESTIONS, Game,
 } from "../scripts/game.js";
 
 test("scoreAnswer full time no streak", () => {
@@ -41,5 +41,23 @@ test("QUESTIONS has at least 20 items and valid shape", () => {
     assert.ok(q.scenario);
     assert.ok(["choice", "judge"].includes(q.type));
     assert.ok("retort" in q);
+  }
+});
+
+test("timeout on judge questions always counts as wrong", () => {
+  const area = {
+    innerHTML: "",
+    querySelector: () => ({ addEventListener: () => {} }),
+    querySelectorAll: () => [],
+  };
+  for (const answer of [true, false]) {
+    const game = new Game(area);
+    game.current = { type: "judge", answer, retort: "n/a" };
+    game.secondsLeft = 0;
+    game.streak = 3;
+    game.total = 0;
+    game.answer(-1);
+    assert.equal(game.total, 0, `judge answer=${answer} timeout must not score`);
+    assert.equal(game.streak, 0, `judge answer=${answer} timeout must break streak`);
   }
 });
