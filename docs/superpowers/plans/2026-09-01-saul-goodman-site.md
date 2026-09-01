@@ -1052,8 +1052,13 @@ export class Game {
     clearInterval(this.timerId);
     const q = this.current;
     let correct;
-    if (q.type === "choice") correct = Number(choice) === q.answer;
-    else correct = (choice === "true") === q.answer;
+    if (choice === -1) {
+      correct = false; // 超时按答错
+    } else if (q.type === "choice") {
+      correct = Number(choice) === q.answer;
+    } else {
+      correct = (choice === "true") === q.answer;
+    }
 
     const [base, speed, combo] = scoreAnswer(correct, this.secondsLeft, this.streak);
     if (correct) this.streak += 1; else this.streak = 0;
