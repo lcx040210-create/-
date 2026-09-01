@@ -16,6 +16,21 @@ namespace OneClickAntivirus
         }
     }
 
+    public class InstallerItem
+    {
+        public string Path;
+        public long Size;
+    }
+
+    public class ProgramInfo
+    {
+        public string Name;
+        public string Version;
+        public string InstallDate;
+        public string UninstallString;
+        public long SizeBytes;
+    }
+
     public static class DeepCleaner
     {
         // 判断路径是否属于系统/受保护目录(这些目录里的文件绝不碰)
@@ -185,6 +200,148 @@ namespace OneClickAntivirus
                 }
             }
             catch { return null; }
+        }
+
+        // 判断文件是否是安装包(扩展名 + 名称关键词)
+        public static bool IsInstallerFile(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return false;
+            string ext = Path.GetExtension(path).ToLowerInvariant();
+            string name = Path.GetFileName(path).ToLowerInvariant();
+
+            if (ext == ".msi" || ext == ".dmg" || ext == ".iso") return true;
+
+            if (ext == ".exe")
+            {
+                return name.Contains("setup") || name.Contains("install")
+                    || name.Contains("安装") || name.Contains("升级");
+            }
+
+            return false;
+        }
+
+        // 安装日期 yyyyMMdd → "yyyy-MM-dd"
+        public static string FormatInstallDate(string yyyyMMdd)
+        {
+            if (string.IsNullOrEmpty(yyyyMMdd) || yyyyMMdd.Length != 8) return "未知";
+            try
+            {
+                int y = int.Parse(yyyyMMdd.Substring(0, 4));
+                int m = int.Parse(yyyyMMdd.Substring(4, 2));
+                int d = int.Parse(yyyyMMdd.Substring(6, 2));
+                return y + "-" + m.ToString("00") + "-" + d.ToString("00");
+            }
+            catch { return "未知"; }
+        }
+
+        public static List<string> GetDrives()
+        {
+            var drives = new List<string>();
+            foreach (var d in DriveInfo.GetDrives())
+            {
+                try
+                {
+                    if (d.IsReady && d.DriveType == DriveType.Fixed) drives.Add(d.Name);
+                }
+                catch { }
+            }
+            return drives;
+        }
+
+        // 全盘查找安装包
+        public static List<InstallerItem> FindInstallers(Action<string> onProgress = null)
+        {
+            var results = new List<InstallerItem>();
+            foreach (string drive in GetDrives())
+            {
+                if (onProgress != null) onProgress("正在扫描 " + drive + " 查找安装包…");
+                ScanInstallers(drive, results);
+            }
+            return results;
+        }
+
+        private static void ScanInstallers(string dir, List<InstallerItem> results)
+        {
+            if (IsSystemDirectory(dir)) return;
+
+            string[] files;
+            try { files = Directory.GetFiles(dir); }
+            catch { files = new string[0]; }
+            foreach (string f in files)
+            {
+                if (!IsInstallerFile(f)) continue;
+                try
+                {
+                    results.Add(new InstallerItem { Path = f, Size = new FileInfo(f).Length });
+                }
+                catch { }
+            }
+
+            string[] subs;
+            try { subs = Directory.GetDirectories(dir); }
+            catch { subs = new string[0]; }
+            foreach (string sub in subs)
+            {
+                try
+                {
+                    if ((File.GetAttributes(sub) & FileAttributes.ReparsePoint) != 0) continue;
+                    ScanInstallers(sub, results);
+                }
+                catch { }
+            }
+        }
+
+        // 从注册表列出已安装程序
+        public static List<ProgramInfo> ListPrograms()
+        {
+            var programs = new List<ProgramInfo>();
+            string[] hklmPaths = {
+                @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+                @"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
+            };
+            foreach (string p in hklmPaths)
+                ReadRegistryPrograms(Microsoft.Win32.Registry.LocalMachine, p, programs);
+            ReadRegistryPrograms(Microsoft.Win32.Registry.CurrentUser, @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall", programs);
+
+            // 按安装日期排序(旧的在前,未知的排最后)
+            programs.Sort(delegate(ProgramInfo a, ProgramInfo b)
+            {
+                string da = a.InstallDate ?? "";
+                string db = b.InstallDate ?? "";
+                if (da == "" && db == "") return 0;
+                if (da == "") return 1;
+                if (db == "") return -1;
+                return string.Compare(da, db);
+            });
+
+            return programs;
+        }
+
+        private static void ReadRegistryPrograms(Microsoft.Win32.RegistryKey baseKey, string path, List<ProgramInfo> programs)
+        {
+            using (Microsoft.Win32.RegistryKey key = baseKey.OpenSubKey(path))
+            {
+                if (key == null) return;
+                foreach (string subName in key.GetSubKeyNames())
+                {
+                    using (Microsoft.Win32.RegistryKey sub = key.OpenSubKey(subName))
+                    {
+                        if (sub == null) continue;
+                        string name = sub.GetValue("DisplayName") as string;
+                        string uninstall = sub.GetValue("UninstallString") as string;
+                        if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(uninstall)) continue;
+
+                        var info = new ProgramInfo();
+                        info.Name = name;
+                        info.Version = sub.GetValue("DisplayVersion") as string ?? "";
+                        info.InstallDate = sub.GetValue("InstallDate") as string ?? "";
+                        info.UninstallString = uninstall;
+                        object size = sub.GetValue("EstimatedSize");
+                        if (size is int) info.SizeBytes = (long)(int)size * 1024;
+                        programs.Add(info);
+                    }
+                }
+            }
         }
     }
 }

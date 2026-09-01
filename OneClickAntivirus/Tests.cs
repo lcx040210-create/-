@@ -87,6 +87,15 @@ namespace OneClickAntivirus
             Check(sizeGroups.Count == 1, "只有 100 字节组有重复(实际 " + sizeGroups.Count + ")");
             Check(sizeGroups.ContainsKey(100) && sizeGroups[100].Count == 2, "100 字节组有 2 个文件");
 
+            Check(DeepCleaner.IsInstallerFile(@"C:\Downloads\setup.exe"), "setup.exe 是安装包");
+            Check(DeepCleaner.IsInstallerFile(@"C:\Downloads\app.msi"), "app.msi 是安装包");
+            Check(!DeepCleaner.IsInstallerFile(@"C:\Downloads\photo.jpg"), "photo.jpg 不是安装包");
+            Check(!DeepCleaner.IsInstallerFile(@"C:\Downloads\app.exe"), "普通 exe(无安装关键词)不是安装包");
+
+            Check(DeepCleaner.FormatInstallDate("20260801") == "2026-08-01", "安装日期格式化");
+            Check(DeepCleaner.FormatInstallDate("") == "未知", "空日期 → 未知");
+            Check(DeepCleaner.FormatInstallDate("abc") == "未知", "非法日期 → 未知");
+
             Console.WriteLine(failures == 0 ? "ALL PASS" : (failures + " FAILED"));
             Environment.Exit(failures);
         }
