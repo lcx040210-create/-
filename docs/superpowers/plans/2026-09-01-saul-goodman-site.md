@@ -1089,13 +1089,16 @@ export class Game {
   }
 }
 
-const game = new Game(document.getElementById("game-area"));
-const startBtn = document.getElementById("start-game");
-if (startBtn) {
-  startBtn.addEventListener("click", () => {
-    document.getElementById("game-area").classList.remove("hidden");
-    game.start();
-  });
+// DOM 初始化仅在浏览器执行；Node 单测导入 game.js 时 document 不存在，须 guard。
+if (typeof document !== "undefined") {
+  const game = new Game(document.getElementById("game-area"));
+  const startBtn = document.getElementById("start-game");
+  if (startBtn) {
+    startBtn.addEventListener("click", () => {
+      document.getElementById("game-area").classList.remove("hidden");
+      game.start();
+    });
+  }
 }
 ```
 
