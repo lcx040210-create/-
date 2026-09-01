@@ -33,6 +33,8 @@ function initRegisterModal() {
 
   if (window.playerId) { modal.classList.add("hidden"); return; }
 
+  modal.classList.remove("hidden");
+
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     err.classList.add("hidden");
