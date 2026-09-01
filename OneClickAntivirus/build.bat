@@ -9,7 +9,7 @@ set FW=C:\Windows\Microsoft.NET\Framework64\v4.0.30319
   /r:"%FW%\System.Core.dll" ^
   /r:"%FW%\System.Drawing.dll" ^
   /r:"%FW%\System.Windows.Forms.dll" ^
-  Program.cs MainForm.cs DefenderScanner.cs
+  Program.cs MainForm.cs DefenderScanner.cs DiskCleaner.cs
 
 if %errorlevel% neq 0 ( echo BUILD FAILED & exit /b 1 )
 echo BUILD OK: OneClickAntivirus.exe

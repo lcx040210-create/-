@@ -47,6 +47,22 @@ namespace OneClickAntivirus
             ScanResult cleanEmpty = DefenderScanner.MapScanResult(0, "");
             Check(cleanEmpty.Status == ScanStatus.Clean, "退出码 0 → 未发现威胁");
 
+            Check(DiskCleaner.FormatBytes(0) == "0 B", "FormatBytes 0 B");
+            Check(DiskCleaner.FormatBytes(512) == "512 B", "FormatBytes 512 B");
+            Check(DiskCleaner.FormatBytes(1024) == "1.0 KB", "FormatBytes 1 KB");
+            Check(DiskCleaner.FormatBytes(1536) == "1.5 KB", "FormatBytes 1.5 KB");
+            Check(DiskCleaner.FormatBytes(1048576) == "1.0 MB", "FormatBytes 1 MB");
+            Check(DiskCleaner.FormatBytes(1073741824) == "1.0 GB", "FormatBytes 1 GB");
+
+            string tmp = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "DCT_" + Guid.NewGuid().ToString("N"));
+            System.IO.Directory.CreateDirectory(tmp);
+            System.IO.File.WriteAllBytes(System.IO.Path.Combine(tmp, "a.bin"), new byte[100]);
+            System.IO.File.WriteAllBytes(System.IO.Path.Combine(tmp, "b.bin"), new byte[200]);
+            long freed = DiskCleaner.CleanDirectory(tmp);
+            Check(freed == 300, "CleanDirectory 释放 300 字节(实际 " + freed + ")");
+            Check(!System.IO.File.Exists(System.IO.Path.Combine(tmp, "a.bin")), "CleanDirectory 删除文件 a");
+            Check(!System.IO.File.Exists(System.IO.Path.Combine(tmp, "b.bin")), "CleanDirectory 删除文件 b");
+
             Console.WriteLine(failures == 0 ? "ALL PASS" : (failures + " FAILED"));
             Environment.Exit(failures);
         }

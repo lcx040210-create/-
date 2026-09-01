@@ -1,4 +1,5 @@
 using System;
+using System.Drawing;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
@@ -7,6 +8,7 @@ namespace OneClickAntivirus
     public class MainForm : Form
     {
         private Button btnScan;
+        private Button btnClean;
         private ProgressBar progressBar;
         private Label lblStatus;
         private ListBox lstResults;
@@ -14,62 +16,102 @@ namespace OneClickAntivirus
 
         public MainForm()
         {
-            Text = "一键杀毒";
-            ClientSize = new System.Drawing.Size(520, 420);
+            Text = "一键杀毒 · 电脑清理";
+            ClientSize = new Size(540, 500);
             StartPosition = FormStartPosition.CenterScreen;
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
+            BackColor = Color.White;
 
-            btnScan = new Button
+            Label lblTitle = new Label
             {
-                Text = "🛡️ 一键全盘杀毒",
-                Font = new System.Drawing.Font("Microsoft YaHei UI", 16f, System.Drawing.FontStyle.Bold),
-                Size = new System.Drawing.Size(360, 60),
-                Location = new System.Drawing.Point(80, 30)
+                Text = "🛡️ 一键杀毒 · 电脑清理",
+                Font = new Font("Microsoft YaHei UI", 15f, FontStyle.Bold),
+                ForeColor = Color.FromArgb(30, 41, 59),
+                AutoSize = true,
+                Location = new Point(20, 18)
             };
+
+            Label lblSubtitle = new Label
+            {
+                Text = "极简 · 安全 · 一键搞定",
+                Font = new Font("Microsoft YaHei UI", 9f),
+                ForeColor = Color.Gray,
+                AutoSize = true,
+                Location = new Point(22, 48)
+            };
+
+            btnScan = MakeButton("🛡️ 一键全盘杀毒", Color.FromArgb(59, 130, 246), new Point(20, 80), 500);
             btnScan.Click += btnScan_Click;
+
+            btnClean = MakeButton("🧹 一键清理磁盘", Color.FromArgb(34, 197, 94), new Point(20, 142), 500);
+            btnClean.Click += btnClean_Click;
 
             progressBar = new ProgressBar
             {
                 Style = ProgressBarStyle.Blocks,
-                Size = new System.Drawing.Size(480, 20),
-                Location = new System.Drawing.Point(20, 110)
+                Size = new Size(500, 16),
+                Location = new Point(20, 212)
             };
 
             lblStatus = new Label
             {
-                Text = "点击上方按钮开始全盘杀毒",
+                Text = "选择上方操作开始",
                 AutoSize = true,
-                Font = new System.Drawing.Font("Microsoft YaHei UI", 10f),
-                Location = new System.Drawing.Point(20, 145)
+                Font = new Font("Microsoft YaHei UI", 10f),
+                ForeColor = Color.FromArgb(30, 41, 59),
+                Location = new Point(20, 238)
             };
 
             lstResults = new ListBox
             {
-                Size = new System.Drawing.Size(480, 200),
-                Location = new System.Drawing.Point(20, 175),
-                HorizontalScrollbar = true
+                Size = new Size(500, 200),
+                Location = new Point(20, 264),
+                BorderStyle = BorderStyle.FixedSingle,
+                HorizontalScrollbar = true,
+                Font = new Font("Microsoft YaHei UI", 9f)
             };
 
             lblLastScan = new Label
             {
                 Text = "上次扫描时间:—",
                 AutoSize = true,
-                Font = new System.Drawing.Font("Microsoft YaHei UI", 9f),
-                ForeColor = System.Drawing.Color.Gray,
-                Location = new System.Drawing.Point(20, 385)
+                Font = new Font("Microsoft YaHei UI", 9f),
+                ForeColor = Color.Gray,
+                Location = new Point(20, 472)
             };
 
+            Controls.Add(lblTitle);
+            Controls.Add(lblSubtitle);
             Controls.Add(btnScan);
+            Controls.Add(btnClean);
             Controls.Add(progressBar);
             Controls.Add(lblStatus);
             Controls.Add(lstResults);
             Controls.Add(lblLastScan);
         }
 
+        private Button MakeButton(string text, Color color, Point loc, int width)
+        {
+            Button b = new Button
+            {
+                Text = text,
+                Font = new Font("Microsoft YaHei UI", 13f, FontStyle.Bold),
+                Size = new Size(width, 54),
+                Location = loc,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = color,
+                ForeColor = Color.White,
+                Cursor = Cursors.Hand
+            };
+            b.FlatAppearance.BorderSize = 0;
+            return b;
+        }
+
         private async void btnScan_Click(object sender, EventArgs e)
         {
             btnScan.Enabled = false;
+            btnClean.Enabled = false;
             progressBar.Style = ProgressBarStyle.Marquee;
             progressBar.MarqueeAnimationSpeed = 30;
             lblStatus.Text = "正在全盘扫描…(可能需要较长时间)";
@@ -97,6 +139,38 @@ namespace OneClickAntivirus
             finally
             {
                 btnScan.Enabled = true;
+                btnClean.Enabled = true;
+            }
+        }
+
+        private async void btnClean_Click(object sender, EventArgs e)
+        {
+            btnScan.Enabled = false;
+            btnClean.Enabled = false;
+            progressBar.Style = ProgressBarStyle.Marquee;
+            progressBar.MarqueeAnimationSpeed = 30;
+            lblStatus.Text = "正在清理磁盘…";
+            lstResults.Items.Clear();
+
+            try
+            {
+                long freed = await Task.Run(() => DiskCleaner.CleanAll());
+
+                progressBar.Style = ProgressBarStyle.Blocks;
+                progressBar.Value = 100;
+                lblStatus.Text = "✅ 清理完成,已释放 " + DiskCleaner.FormatBytes(freed);
+                lstResults.Items.Add("已释放磁盘空间:" + DiskCleaner.FormatBytes(freed));
+            }
+            catch (Exception ex)
+            {
+                progressBar.Style = ProgressBarStyle.Blocks;
+                progressBar.Value = 0;
+                lblStatus.Text = "清理出错:" + ex.Message;
+            }
+            finally
+            {
+                btnScan.Enabled = true;
+                btnClean.Enabled = true;
             }
         }
     }
