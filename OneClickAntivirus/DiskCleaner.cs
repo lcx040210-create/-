@@ -20,13 +20,23 @@ namespace OneClickAntivirus
         {
             long freed = 0;
             if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir)) return 0;
+            CleanContents(dir, ref freed);
+            return freed;
+        }
 
-            foreach (string file in SafeGetFiles(dir))
+        // 逐目录递归清理内容,但不删除 dir 本身;跳过 junction/符号链接,避免死循环
+        private static void CleanContents(string dir, ref long freed)
+        {
+            string[] files;
+            try { files = Directory.GetFiles(dir); }
+            catch { files = new string[0]; }
+
+            foreach (string f in files)
             {
                 try
                 {
-                    long len = new FileInfo(file).Length;
-                    File.Delete(file);
+                    long len = new FileInfo(f).Length;
+                    File.Delete(f);
                     freed += len;
                 }
                 catch
@@ -35,17 +45,23 @@ namespace OneClickAntivirus
                 }
             }
 
-            try
-            {
-                foreach (string sub in Directory.GetDirectories(dir))
-                {
-                    try { Directory.Delete(sub, true); }
-                    catch { }
-                }
-            }
-            catch { }
+            string[] subs;
+            try { subs = Directory.GetDirectories(dir); }
+            catch { subs = new string[0]; }
 
-            return freed;
+            foreach (string sub in subs)
+            {
+                try
+                {
+                    if ((File.GetAttributes(sub) & FileAttributes.ReparsePoint) != 0)
+                        continue; // 跳过 junction / 符号链接
+
+                    CleanContents(sub, ref freed);
+
+                    try { Directory.Delete(sub, false); } catch { } // 清完删除空目录
+                }
+                catch { }
+            }
         }
 
         [DllImport("Shell32.dll", CharSet = CharSet.Unicode)]
@@ -88,16 +104,6 @@ namespace OneClickAntivirus
             CleanRecycleBin();
 
             return freed;
-        }
-
-        private static string[] SafeGetFiles(string dir)
-        {
-            try { return Directory.GetFiles(dir, "*", SearchOption.AllDirectories); }
-            catch
-            {
-                try { return Directory.GetFiles(dir); }
-                catch { return new string[0]; }
-            }
         }
     }
 }

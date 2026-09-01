@@ -63,6 +63,14 @@ namespace OneClickAntivirus
             Check(!System.IO.File.Exists(System.IO.Path.Combine(tmp, "a.bin")), "CleanDirectory 删除文件 a");
             Check(!System.IO.File.Exists(System.IO.Path.Combine(tmp, "b.bin")), "CleanDirectory 删除文件 b");
 
+            string tmp2 = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "DCT2_" + Guid.NewGuid().ToString("N"));
+            System.IO.Directory.CreateDirectory(System.IO.Path.Combine(tmp2, "sub"));
+            System.IO.File.WriteAllBytes(System.IO.Path.Combine(tmp2, "top.bin"), new byte[10]);
+            System.IO.File.WriteAllBytes(System.IO.Path.Combine(tmp2, "sub", "nested.bin"), new byte[40]);
+            long freed2 = DiskCleaner.CleanDirectory(tmp2);
+            Check(freed2 == 50, "CleanDirectory 递归清理嵌套目录 50 字节(实际 " + freed2 + ")");
+            Check(!System.IO.File.Exists(System.IO.Path.Combine(tmp2, "sub", "nested.bin")), "CleanDirectory 删除嵌套文件");
+
             Console.WriteLine(failures == 0 ? "ALL PASS" : (failures + " FAILED"));
             Environment.Exit(failures);
         }
