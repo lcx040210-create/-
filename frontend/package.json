@@ -1,0 +1,5 @@
+{
+  "name": "saul-goodman-frontend",
+  "type": "module",
+  "scripts": { "test": "node --test" }
+}
