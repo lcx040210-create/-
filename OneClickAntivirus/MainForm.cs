@@ -13,6 +13,8 @@ namespace OneClickAntivirus
         private Label lblStatus;
         private ListBox lstResults;
         private Label lblLastScan;
+        private Timer heartbeatTimer;
+        private DateTime scanStartTime;
 
         public MainForm()
         {
@@ -108,19 +110,55 @@ namespace OneClickAntivirus
             return b;
         }
 
+        private void AppendLog(string text)
+        {
+            if (InvokeRequired)
+            {
+                BeginInvoke((Action)(() => AppendLog(text)));
+                return;
+            }
+            lstResults.Items.Add(text);
+            lstResults.TopIndex = lstResults.Items.Count - 1;
+        }
+
+        private void StartHeartbeat()
+        {
+            scanStartTime = DateTime.Now;
+            heartbeatTimer = new Timer();
+            heartbeatTimer.Interval = 1000;
+            heartbeatTimer.Tick += (s, e) =>
+            {
+                int sec = (int)(DateTime.Now - scanStartTime).TotalSeconds;
+                lblStatus.Text = "正在全盘扫描… 已运行 " + sec + " 秒";
+            };
+            heartbeatTimer.Start();
+        }
+
+        private void StopHeartbeat()
+        {
+            if (heartbeatTimer != null)
+            {
+                heartbeatTimer.Stop();
+                heartbeatTimer.Dispose();
+                heartbeatTimer = null;
+            }
+        }
+
         private async void btnScan_Click(object sender, EventArgs e)
         {
             btnScan.Enabled = false;
             btnClean.Enabled = false;
             progressBar.Style = ProgressBarStyle.Marquee;
             progressBar.MarqueeAnimationSpeed = 30;
-            lblStatus.Text = "正在全盘扫描…(可能需要较长时间)";
             lstResults.Items.Clear();
+            AppendLog("开始全盘扫描…");
+            StartHeartbeat();
 
             try
             {
-                ScanResult result = await Task.Run(() => DefenderScanner.RunFullScan());
+                ScanResult result = await Task.Run(() => DefenderScanner.RunFullScan(line => AppendLog("  " + line)));
 
+                StopHeartbeat();
                 progressBar.Style = ProgressBarStyle.Blocks;
                 progressBar.Value = 100;
                 lblStatus.Text = result.Message;
@@ -132,12 +170,14 @@ namespace OneClickAntivirus
             }
             catch (Exception ex)
             {
+                StopHeartbeat();
                 progressBar.Style = ProgressBarStyle.Blocks;
                 progressBar.Value = 0;
                 lblStatus.Text = "扫描出错:" + ex.Message;
             }
             finally
             {
+                StopHeartbeat();
                 btnScan.Enabled = true;
                 btnClean.Enabled = true;
             }
@@ -154,7 +194,7 @@ namespace OneClickAntivirus
 
             try
             {
-                long freed = await Task.Run(() => DiskCleaner.CleanAll());
+                long freed = await Task.Run(() => DiskCleaner.CleanAll(step => AppendLog(step)));
 
                 progressBar.Style = ProgressBarStyle.Blocks;
                 progressBar.Value = 100;

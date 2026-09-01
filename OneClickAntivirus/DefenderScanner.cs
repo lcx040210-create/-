@@ -62,7 +62,7 @@ namespace OneClickAntivirus
             return null;
         }
 
-        public static ScanResult RunFullScan()
+        public static ScanResult RunFullScan(Action<string> onOutput = null)
         {
             string mpCmd = FindMpCmdRun();
             if (mpCmd == null)
@@ -80,11 +80,27 @@ namespace OneClickAntivirus
 
             using (System.Diagnostics.Process p = System.Diagnostics.Process.Start(psi))
             {
-                string stdout = p.StandardOutput.ReadToEnd();
-                string stderr = p.StandardError.ReadToEnd();
+                var stdout = new System.Text.StringBuilder();
+                var stderr = new System.Text.StringBuilder();
+
+                p.OutputDataReceived += (s, e) =>
+                {
+                    if (e.Data != null)
+                    {
+                        lock (stdout) { stdout.AppendLine(e.Data); }
+                        if (onOutput != null) onOutput(e.Data);
+                    }
+                };
+                p.ErrorDataReceived += (s, e) =>
+                {
+                    if (e.Data != null) { lock (stderr) { stderr.AppendLine(e.Data); } }
+                };
+
+                p.BeginOutputReadLine();
+                p.BeginErrorReadLine();
                 p.WaitForExit();
 
-                ScanResult result = MapScanResult(p.ExitCode, stdout + "\n" + stderr);
+                ScanResult result = MapScanResult(p.ExitCode, stdout.ToString() + "\n" + stderr.ToString());
                 if (result.Status == ScanStatus.ThreatsFound)
                     result.Threats = GetRecentThreats();
                 return result;

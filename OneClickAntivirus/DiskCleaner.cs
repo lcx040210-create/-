@@ -63,18 +63,28 @@ namespace OneClickAntivirus
             catch { }
         }
 
-        public static long CleanAll()
+        public static long CleanAll(Action<string> onProgress = null)
         {
             long freed = 0;
 
+            if (onProgress != null) onProgress("正在清理:用户临时文件…");
             freed += CleanDirectory(Path.GetTempPath());
+
+            if (onProgress != null) onProgress("正在清理:系统临时文件…");
             freed += CleanDirectory(@"C:\Windows\Temp");
+
+            if (onProgress != null) onProgress("正在清理:Windows 更新缓存…");
             freed += CleanDirectory(@"C:\Windows\SoftwareDistribution\Download");
 
             string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+
+            if (onProgress != null) onProgress("正在清理:Chrome 浏览器缓存…");
             freed += CleanDirectory(Path.Combine(local, @"Google\Chrome\User Data\Default\Cache"));
+
+            if (onProgress != null) onProgress("正在清理:Edge 浏览器缓存…");
             freed += CleanDirectory(Path.Combine(local, @"Microsoft\Edge\User Data\Default\Cache"));
 
+            if (onProgress != null) onProgress("正在清理:回收站…");
             CleanRecycleBin();
 
             return freed;
