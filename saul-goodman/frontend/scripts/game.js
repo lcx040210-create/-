@@ -103,21 +103,50 @@ const ROUNDS = 3;
 const PER_ROUND = 5;
 const TIME_LIMIT = 10;
 
+const PIXEL_PHONE = `<svg class="pixel-sprite pixel-phone" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true">
+  <rect x="4" y="1" width="8" height="14" fill="#1f3a8a"/>
+  <rect x="5" y="3" width="6" height="8" fill="#ffd400"/>
+  <rect x="6" y="12" width="4" height="1" fill="#e11d2e"/>
+</svg>`;
+
+const PIXEL_HAPPY = `<svg class="pixel-sprite pixel-face" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true">
+  <rect x="2" y="2" width="12" height="12" fill="#ffd400"/>
+  <rect x="4" y="5" width="2" height="2" fill="#111"/>
+  <rect x="10" y="5" width="2" height="2" fill="#111"/>
+  <rect x="5" y="10" width="6" height="2" fill="#111"/>
+</svg>`;
+
+const PIXEL_ANGRY = `<svg class="pixel-sprite pixel-face" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true">
+  <rect x="2" y="2" width="12" height="12" fill="#e11d2e"/>
+  <rect x="4" y="4" width="2" height="2" fill="#111"/>
+  <rect x="10" y="4" width="2" height="2" fill="#111"/>
+  <rect x="4" y="5" width="2" height="1" fill="#111"/>
+  <rect x="10" y="5" width="2" height="1" fill="#111"/>
+  <rect x="5" y="11" width="6" height="2" fill="#111"/>
+</svg>`;
+
 export class Game {
   constructor(area) {
     this.area = area;
     this.used = new Set();
     this.round = 0;
     this.total = 0;
+    this.baseTotal = 0;
+    this.speedTotal = 0;
+    this.comboTotal = 0;
     this.streak = 0;
     this.secondsLeft = TIME_LIMIT;
     this.timerId = null;
+    this.autoNext = null;
     this.current = null;
   }
 
   start() {
     this.round = 0;
     this.total = 0;
+    this.baseTotal = 0;
+    this.speedTotal = 0;
+    this.comboTotal = 0;
     this.streak = 0;
     this.used = new Set();
     this._nextQuestion();
@@ -144,7 +173,8 @@ export class Game {
 
   _renderQuestion() {
     const q = this.current;
-    let html = `<div class="q-box"><p class="phone-ring">☎ RING RING — ROUND ${this.round}</p>`
+    let html = `<div class="q-box"><div class="pixel-row">${PIXEL_PHONE}</div>`
+      + `<p class="phone-ring">ROUND ${this.round} — INCOMING CALL</p>`
       + `<p class="q-scenario">"${q.scenario}"</p>`
       + `<p class="timer">${this.secondsLeft}s</p>`;
     if (q.type === "choice") {
@@ -181,20 +211,30 @@ export class Game {
     const [base, speed, combo] = scoreAnswer(correct, this.secondsLeft, this.streak);
     if (correct) this.streak += 1; else this.streak = 0;
     this.total += base + speed + combo;
+    this.baseTotal += base;
+    this.speedTotal += speed;
+    this.comboTotal += combo;
 
-    this.area.innerHTML = `<div class="q-box"><p class="retort">Saul: "${q.retort}"</p>`
+    const face = correct ? PIXEL_HAPPY : PIXEL_ANGRY;
+    this.area.innerHTML = `<div class="q-box"><div class="pixel-row">${face}</div>`
+      + `<p class="retort">Saul: "${q.retort}"</p>`
       + `<p>${correct ? "+" : "0"} points (base ${base}, speed ${speed}, combo ${combo})</p>`
-      + `<button id="next" class="btn">NEXT CALL</button></div>`;
-    this.area.querySelector("#next").addEventListener("click", () => this._nextQuestion());
+      + `<p class="next-hint">Next call in 2s...</p></div>`;
+    this.autoNext = setTimeout(() => this._nextQuestion(), 2000);
   }
 
   async _finish() {
     clearInterval(this.timerId);
+    clearTimeout(this.autoNext);
     const winIndex = computeWinIndex(this.total);
     const label = rankLabel(winIndex);
     let html = `<div class="result"><p>That's a wrap.</p>`
       + `<p class="index">${winIndex} / 100</p>`
-      + `<p>${label}</p><p>Total: ${this.total}</p>`
+      + `<p>${label}</p>`
+      + `<div class="score-breakdown">`
+      + `<p>Base: ${this.baseTotal} &nbsp; Speed: ${this.speedTotal} &nbsp; Combo: ${this.comboTotal}</p>`
+      + `<p>Total score: ${this.total}</p>`
+      + `</div>`
       + `<button id="replay" class="btn">TAKE ANOTHER CALL</button></div>`;
 
     if (window.playerId) {

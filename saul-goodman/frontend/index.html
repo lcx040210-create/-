@@ -5,8 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Saul Goodman | Attorney at Law</title>
   <link rel="stylesheet" href="styles/main.css">
+  <script src="https://cdn.jsdelivr.net/npm/ethers@6/dist/ethers.umd.min.js"></script>
 </head>
 <body>
+  <div id="wallet-corner">
+    <button id="connect-wallet" class="btn btn-connect">CONNECT WALLET</button>
+    <p id="wallet-status"></p>
+  </div>
+
   <!-- 注册弹框 -->
   <div id="register-modal" class="modal hidden">
     <div class="modal-card">
@@ -63,16 +69,57 @@
     <button id="start-game" class="btn">TAKE A CALL</button>
     <div id="game-area" class="hidden"></div>
     <div id="leaderboard">
-      <h3>TOP SNAKES</h3>
+      <h3>DAILY REWARD POOL — TOP 10</h3>
+      <p id="pool-info"></p>
+      <div class="reward-rules">
+        <p>Every day <strong>10,000,000 tokens</strong> go to the top 10 snakes. Higher rank, bigger cut:</p>
+        <p class="reward-shares">#1 30% &middot; #2 20% &middot; #3 14% &middot; #4 10% &middot; #5 8% &middot; #6 6% &middot; #7 5% &middot; #8 4% &middot; #9 2% &middot; #10 1%</p>
+        <p class="reward-note">Tokens aren't launched yet. Rewards are recorded now and paid out after launch.</p>
+      </div>
       <ol id="leaderboard-list"></ol>
     </div>
+  </section>
+
+  <!-- 打赏 -->
+  <section id="donate">
+    <h2>RETAIN SAUL</h2>
+    <p class="sub">Pay Saul's consulting fee. The more you pay, the faster he calls back.</p>
+
+    <div id="wallet-donate">
+      <h3>PAY CONSULTING FEE</h3>
+      <div class="token-toggle">
+        <button class="token-btn active" data-token="USDT">USDT</button>
+        <button class="token-btn" data-token="USDC">USDC</button>
+      </div>
+      <div class="amount-presets">
+        <button class="amount-btn" data-amt="1">1</button>
+        <button class="amount-btn" data-amt="5">5</button>
+        <button class="amount-btn" data-amt="10">10</button>
+        <button class="amount-btn" data-amt="50">50</button>
+      </div>
+      <input id="donate-amount" type="number" min="0" step="0.01" placeholder="Or enter any amount">
+      <button id="donate-btn" class="btn">PAY &amp; GET PRIORITY</button>
+      <p id="donate-msg"></p>
+    </div>
+
+    <div id="client-priority">
+      <h3>PRIORITY LINE — TOP CLIENTS</h3>
+      <p class="sub">Higher fee, higher priority. Saul calls these guys back first.</p>
+      <ol id="client-list"></ol>
+    </div>
+
+    <p class="sub">Prefer it old-fashioned? Copy an address:</p>
+    <div id="donate-grid"></div>
+    <p class="disclaimer">This is a parody. There is no actual consulting service — your "fee" is just a tip, and Saul (regrettably) won't really call you back. But he appreciates it.</p>
+    <p class="disclaimer">Consulting fees are non-refundable. Saul's time is money. Probably.</p>
   </section>
 
   <!-- Call now -->
   <footer id="call-now">
     <h2 class="mega">CALL NOW!</h2>
-    <p class="phone">(505) 555-0100</p>
+    <a class="phone" href="https://x.com/Lcxxx_Lcx" target="_blank" rel="noopener">@Lcxxx_Lcx</a>
     <div class="ticker"><span>FREE CONSULTATION</span></div>
+    <audio id="ad-audio" src="audio/saul-ad.mp3" loop autoplay></audio>
     <p class="disclaimer">Results not guaranteed. Billing, however, is.</p>
     <p class="disclaimer">Parody site. Not affiliated with any actual law firm, cartel, or snack manufacturer.</p>
   </footer>

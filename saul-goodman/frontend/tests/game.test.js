@@ -57,6 +57,7 @@ test("timeout on judge questions always counts as wrong", () => {
     game.streak = 3;
     game.total = 0;
     game.answer(-1);
+    clearTimeout(game.autoNext); // 清理自动跳题的定时器，避免测试进程挂起
     assert.equal(game.total, 0, `judge answer=${answer} timeout must not score`);
     assert.equal(game.streak, 0, `judge answer=${answer} timeout must break streak`);
   }
