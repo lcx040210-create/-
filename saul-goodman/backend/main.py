@@ -20,6 +20,15 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Saul Goodman", lifespan=lifespan)
 
 
+@app.middleware("http")
+async def add_no_cache(request, call_next):
+    response = await call_next(request)
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
+
+
 @app.get("/api/health")
 def health():
     return {"ok": True}
@@ -86,6 +95,63 @@ def leaderboard():
         for i, r in enumerate(rows, 1)
     ]
     return {"players": players}
+
+
+DAILY_POOL = 10_000_000
+REWARD_SHARES = [0.30, 0.20, 0.14, 0.10, 0.08, 0.06, 0.05, 0.04, 0.02, 0.01]
+
+
+def _day_start_ts() -> int:
+    now = time.localtime()
+    return int(time.mktime((now.tm_year, now.tm_mon, now.tm_mday, 0, 0, 0, 0, 0, 0)))
+
+
+@app.get("/api/rewards")
+def rewards():
+    conn = db.get_conn()
+    rows = conn.execute(
+        "SELECT p.username, MAX(s.win_index) AS best "
+        "FROM scores s JOIN players p ON p.id = s.player_id "
+        "WHERE s.created_at >= ? "
+        "GROUP BY s.player_id ORDER BY best DESC LIMIT 10",
+        (_day_start_ts(),),
+    ).fetchall()
+    conn.close()
+    winners = []
+    for i, r in enumerate(rows):
+        share = REWARD_SHARES[i] if i < len(REWARD_SHARES) else 0
+        reward = int(DAILY_POOL * share)
+        winners.append({"rank": i + 1, "username": r["username"],
+                        "win_index": r["best"], "reward": reward})
+    return {"pool": DAILY_POOL, "winners": winners}
+
+
+@app.post("/api/fees")
+def record_fee(payload: models.FeeCreate):
+    conn = db.get_conn()
+    conn.execute(
+        "INSERT INTO fees (player_id, amount, created_at) VALUES (?, ?, ?)",
+        (payload.player_id, payload.amount, int(time.time())),
+    )
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
+
+@app.get("/api/clients")
+def clients():
+    conn = db.get_conn()
+    rows = conn.execute(
+        "SELECT p.username, SUM(f.amount) AS total "
+        "FROM fees f JOIN players p ON p.id = f.player_id "
+        "GROUP BY f.player_id ORDER BY total DESC LIMIT 50"
+    ).fetchall()
+    conn.close()
+    result = [
+        {"rank": i, "username": r["username"], "total": round(r["total"], 2)}
+        for i, r in enumerate(rows, 1)
+    ]
+    return {"clients": result}
 
 
 # 静态前端兜底（须在所有 API 路由之后注册）

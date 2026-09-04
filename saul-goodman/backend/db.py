@@ -16,6 +16,12 @@ CREATE TABLE IF NOT EXISTS scores (
     score INTEGER NOT NULL,
     created_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS fees (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    player_id INTEGER NOT NULL REFERENCES players(id),
+    amount REAL NOT NULL,
+    created_at INTEGER NOT NULL
+);
 """
 
 DB_PATH = os.environ.get("DATABASE_URL", "saul.db")

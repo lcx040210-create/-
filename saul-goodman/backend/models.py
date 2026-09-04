@@ -11,3 +11,8 @@ class ScoreCreate(BaseModel):
     player_id: int
     win_index: int
     score: int
+
+
+class FeeCreate(BaseModel):
+    player_id: int
+    amount: float
