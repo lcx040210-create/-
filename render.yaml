@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: saul-goodman
+    runtime: python
+    rootDir: saul-goodman/backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    plan: free
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.0
