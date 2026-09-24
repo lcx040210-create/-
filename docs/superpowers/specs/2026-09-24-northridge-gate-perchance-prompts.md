@@ -8,22 +8,22 @@
 
 ## ① 立绘（竖版）
 
-### v1_human.png — Dispatcher · Lin Yuan (human)
+### v1_human.png — Dispatcher · Daniel Cole (human)
 ```
 first-person horror game, looking through a reinforced checkpoint window, 1990s research outpost, grimy glass, fluorescent flicker, cinematic lighting, grain, VHS, no text, no watermark — a tired middle-aged facility dispatcher in a worn uniform standing at the window, rain-soaked and uneasy but fully human, warm skin, normal proportions, weary eyes — horror game still, terrified atmosphere, 35mm, high detail, portrait orientation
 ```
 
-### v2_skinfit_frame1.png — Maintenance · Chen Mo (skin-fit)
+### v2_skinfit_frame1.png — Maintenance · Marcus Reed (skin-fit)
 ```
 first-person horror game, looking through a reinforced checkpoint window, 1990s research outpost, grimy glass, fluorescent flicker, stop-motion creature that only looks human, not a real person, cinematic lighting, grain, VHS, no text, no watermark — a maintenance worker in dark coveralls and a low-brim hard hat standing at the window, skin too smooth and tight like a mask stretched over something, a thin faint seam line running from behind the right ear down the neck, eyes mid-blink out of sync, one pupil larger than the other — horror game still, grotesque but stylized, terrified atmosphere, 35mm, high detail, portrait orientation
 ```
 
-### v3_suspicious_frame1.png — Visitor · He Xi (human who looks like a pseudo)
+### v3_suspicious_frame1.png — Visitor · Sam Whitfield (human who looks like a pseudo)
 ```
 first-person horror game, looking through a reinforced checkpoint window, 1990s research outpost, grimy glass, fluorescent flicker, cinematic lighting, grain, VHS, no text, no watermark — a nervous young visitor at the window, wide darting eyes and twitchy posture that reads wrong but on closer look fully human, rain-damp hair, anxious, no seams no wrongness just fear — horror game still, terrified atmosphere, 35mm, high detail, portrait orientation
 ```
 
-### v4_coretick_frame1.png — Relief · Zhou Qi (core-tick)
+### v4_coretick_frame1.png — Relief · Victor Hale (core-tick)
 ```
 first-person horror game, looking through a reinforced checkpoint window, 1990s research outpost, grimy glass, fluorescent flicker, stop-motion creature that only looks human, not a real person, cinematic lighting, grain, VHS, no text, no watermark — a relief worker at the window, unnervingly still, too-clean uniform, a faint metallic glint and subtle ticking bulge under the collarbone, flat calm expression, unblinking eyes — horror game still, grotesque but stylized, terrified atmosphere, 35mm, high detail, portrait orientation
 ```
