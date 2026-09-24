@@ -1,10 +1,18 @@
 # 北岭闸口 · Perchance 出图清单（直接粘贴）
 
 > 下载后按文件名放进 `northridge-gate/public/assets/` 对应子目录（portraits / exec / env）。
-> **画幅**：立绘用竖版（portrait），处决帧用横版（16:9）——Perchance 在画幅设置里选，不要写 `--ar`（那是 Midjourney 语法）。
-> **伪人 5 帧**：同一 prompt 在 Perchance 出 5 次 = `frame1..5`，第 3 帧要能看出破绽。
+> **画幅**：立绘用竖版（portrait），处决帧用横版（16:9）——Perchance 在画幅设置里选，不要写 `--ar`。
+> **伪人 5 帧**：同一 prompt 出 5 次 = `frame1..5`，第 3 帧要能看出破绽。
+
+## 负面提示词（每条都填在 negative 框，或追加在 prompt 末尾）
+
+```
+no text, no watermark, no signature, no logo, no captions, deformed, bad anatomy, extra fingers, extra limbs, extra digits, mutated, disfigured, cartoon, anime, manga, flat illustration, vector art, pixel art, blurry, low quality, low resolution, jpeg artifacts, oversaturated, plastic, glossy, childish, ugly
+```
 
 ---
+
+每条 prompt 已含完整【前缀 + 正文 + 后缀】。下面按图逐条给全。
 
 ## ① 立绘（竖版）
 
@@ -74,6 +82,31 @@ first-person horror game, close-up of a grimy reinforced checkpoint window, 1990
 ### window_residue_fire.png — 玻璃残渣（火）
 ```
 first-person horror game, close-up of a grimy reinforced checkpoint window, 1990s research outpost, fluorescent flicker, cinematic lighting, grain, VHS, no text, no watermark — brown soot crust and fogged glass, dried streaks of boiled residue down the empty pane, no creature visible — horror game still, terrified atmosphere, 35mm, high detail
+```
+
+---
+
+## 房间贴图（room/，另附）
+
+### wall.png — 观察室内墙（16:9）
+```
+first-person horror game, interior wall of an observation booth, 1990s research outpost, grimy concrete wall with peeling paint and stains, a large reinforced observation window in the center with metal frame and rivets, night and rain visible through the glass with a distant yellow streetlight, condensation and cracks on the glass, cinematic lighting, grain, VHS, no text, no watermark
+```
+
+### floor.png — 混凝土地板（方形可平铺）
+```
+top-down concrete floor texture, grimy wet concrete with cracks, oil stains, puddle reflections, mildew, 1990s research outpost, cold green tint, cinematic lighting, grain, no text, no watermark
+```
+
+### sofa.png / metal.png / wood.png — 家具纹理
+```
+worn dark red fabric texture, fine weave, subtle grime, tileable, no text, no watermark
+```
+```
+steel gray metal texture, scratches, stains, rivets, tileable, no text, no watermark
+```
+```
+dark brown wood grain texture, weathered, tileable, no text, no watermark
 ```
 
 ---
