@@ -265,15 +265,16 @@ Demo 只启用核响 **或** 湿巢其一。
 | 代码骨架 + 引擎逻辑 + `schema.ts` | 本会话（DeepSeek API） | 白菜价 |
 | 全部文案草稿（4 访客、环境叙事、结局、道具、UI） | DeepSeek | 白菜价 |
 | 最终精修 pass（只改不写） | Opus 5.5 | ≈ $1–2 总量 |
-| 立绘 + 定格 + 处决帧 + 剪影 | Perchance | 免费 |
+| 立绘 + 定格 + 处决帧 + 剪影（SVG 矢量，Opus 直接写） | Opus 5.5 | ≈ $1–2 总量 |
 | 融合进数据文件 + 跑通 | 本会话 | 白菜价 |
 
-**Opus 5.5 只碰这五处高杠杆点（其余一律 DeepSeek）：**
+**Opus 5.5 只碰这六处高杠杆点（其余一律 DeepSeek）：**
 1. 4 句卡帧（伪人那句错字/重复标点）——全游戏最见功力
 2. 访客 #3「像伪人的人类」整段——高压误判的微妙
 3. 结局两句文案 ×3——情绪落点
 4. 环境叙事 3–4 段（手册缺页、抽屉便利贴、对讲机碎片）
 5. 一段 voice bible（约 1500 字）——DeepSeek 与精修都照它定调
+6. 视觉 bible + 全部 SVG 画面（立绘/定格帧/处决帧/UI）——文字破绽与画面破绽必须咬合
 
 **预算账**（Opus 级 API 输出 $60–75/M 量级估算）：一次精修 ≈ 读 40K（≈$0.6）+ 写 8K（≈$0.6）≈ $1.2。返工 5–8 轮也仅 $10 上下，**$20 有充足余量**。DeepSeek 写几百 K 草稿成本忽略不计。
 
@@ -281,36 +282,36 @@ Demo 只启用核响 **或** 湿巢其一。
 1. 本会话产出 `schema.ts` + 引擎 + 代码骨架 + voice bible 草稿
 2. DeepSeek 照 schema 批量出全部文案草稿
 3. Opus 5.5 精修五处高杠杆点
-4. Perchance 出图（见 §8）
+4. Opus 5.5 写 SVG 画面（见 §8）
 5. 本会话组装进数据文件、跑通
 
 ---
 
-## 8. 资产清单与命名规范（Perchance 产出）
+## 8. 资产清单与命名规范（Opus 5.5 写 SVG 矢量）
 
-Perchance 不产真动画，但本 Demo 要的是「定格 4 帧」而非动画，正好对得上。
+画面全部由 Opus 5.5 直接写 SVG（SVG 是文本，Opus 能出，无需位图管线）。3D 房间保留 Three.js primitives，不在此清单内。颗粒/血浆质感用 SVG filter（`feTurbulence` 噪点、`feColorMatrix` 调色）；伪人定格帧 = 同一张立绘的 SVG 变体，只差在破绽上。本 Demo 要的是「定格 4 帧」而非动画，正好对得上。
 
 ```
 public/assets/
   portraits/
-    v1_human.png
-    v2_skinfit_frame1..5.png       # 伪人定格，第 3 帧必须露出破绽
-    v3_suspicious_frame1..5.png
-    v4_coretick_frame1..5.png
+    v1_human.svg
+    v2_skinfit_frame1..5.svg       # 伪人定格，第 3 帧必须露出破绽
+    v3_suspicious_frame1..5.svg
+    v4_coretick_frame1..5.svg
   exec/
-    exec_axe_1..4.png              # 处决成功 4 帧
-    exec_gun_1..4.png
-    exec_fire_1..4.png
-    exec_fail_1..4.png             # 「东西还站着」失败分支
+    exec_axe_1..4.svg              # 处决成功 4 帧
+    exec_gun_1..4.svg
+    exec_fire_1..4.svg
+    exec_fail_1..4.svg             # 「东西还站着」失败分支
   env/
-    corridor_silhouette.png        # 开场剪影
-    shoes_hallucination.png        # 幻觉多一双鞋
-    window_residue_axe.png         # 三种玻璃残渣
-    window_residue_gun.png
-    window_residue_fire.png
+    corridor_silhouette.svg        # 开场剪影
+    shoes_hallucination.svg        # 幻觉多一双鞋
+    window_residue_axe.svg         # 三种玻璃残渣
+    window_residue_gun.svg
+    window_residue_fire.svg
 ```
 
-对应 schema 字段：`portrait`、`freezeFrames[]`、`Execution.frames[]`、`residue`。你出图，本会话填空。
+对应 schema 字段：`portrait`、`freezeFrames[]`、`Execution.frames[]`、`residue`。Opus 写 SVG，本会话填入路径。
 
 ---
 

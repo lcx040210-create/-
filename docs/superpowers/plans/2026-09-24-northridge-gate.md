@@ -404,8 +404,8 @@ import type { Visitor } from '../schema'
 
 export const v1Human: Visitor = {
   id: 'v1-human', claimedName: '调度 · 林远', role: 'human', state: 'clean',
-  portrait: '/assets/portraits/v1_human.png',
-  freezeFrames: ['/assets/portraits/v1_human.png'],
+  portrait: '/assets/portraits/v1_human.svg',
+  freezeFrames: ['/assets/portraits/v1_human.svg'],
   tells: { eye: '眼神正常。', id: '证件一致。', questions: [] },
   correctVerdict: 'admit',
   outcomes: { admit: { text: '放行。', san: 0 }, execute: { text: '误杀。', san: -15 }, contain: { text: '误收容。', san: -8 } },
@@ -418,8 +418,8 @@ import type { Visitor } from '../schema'
 
 export const v2Skinfit: Visitor = {
   id: 'v2-skinfit', claimedName: '维修 · 陈默', role: 'skinfit', state: 'clean',
-  portrait: '/assets/portraits/v2_skinfit_frame1.png',
-  freezeFrames: ['/assets/portraits/v2_skinfit_frame1.png', '/assets/portraits/v2_skinfit_frame2.png', '/assets/portraits/v2_skinfit_frame3.png'],
+  portrait: '/assets/portraits/v2_skinfit_frame1.svg',
+  freezeFrames: ['/assets/portraits/v2_skinfit_frame1.svg', '/assets/portraits/v2_skinfit_frame2.svg', '/assets/portraits/v2_skinfit_frame3.svg'],
   glitchLine: '我是来修灯的。。灯的线路出了问题',
   tells: { eye: '他眨眼，两只眼睛节奏不一样。', id: '证件牙齿数对不上。', questions: [] },
   correctVerdict: 'execute', correctTool: 'axe',
@@ -572,22 +572,22 @@ import type { Execution, Tool } from './schema'
 export const EXECUTIONS: Record<Tool, Execution> = {
   axe: {
     tool: 'axe',
-    frames: ['/assets/exec/exec_axe_1.png', '/assets/exec/exec_axe_2.png', '/assets/exec/exec_axe_3.png', '/assets/exec/exec_axe_4.png'],
-    residue: '/assets/env/window_residue_axe.png',
+    frames: ['/assets/exec/exec_axe_1.svg', '/assets/exec/exec_axe_2.svg', '/assets/exec/exec_axe_3.svg', '/assets/exec/exec_axe_4.svg'],
+    residue: '/assets/env/window_residue_axe.svg',
     onSuccess: { san: 0, radioDistort: true },
     onFailure: { san: -10, escaped: true },
   },
   gun: {
     tool: 'gun',
-    frames: ['/assets/exec/exec_gun_1.png', '/assets/exec/exec_gun_2.png', '/assets/exec/exec_gun_3.png', '/assets/exec/exec_gun_4.png'],
-    residue: '/assets/env/window_residue_gun.png',
+    frames: ['/assets/exec/exec_gun_1.svg', '/assets/exec/exec_gun_2.svg', '/assets/exec/exec_gun_3.svg', '/assets/exec/exec_gun_4.svg'],
+    residue: '/assets/env/window_residue_gun.svg',
     onSuccess: { san: -5, radioDistort: false },
     onFailure: { san: -5, escaped: true },
   },
   fire: {
     tool: 'fire',
-    frames: ['/assets/exec/exec_fire_1.png', '/assets/exec/exec_fire_2.png', '/assets/exec/exec_fire_3.png', '/assets/exec/exec_fire_4.png'],
-    residue: '/assets/env/window_residue_fire.png',
+    frames: ['/assets/exec/exec_fire_1.svg', '/assets/exec/exec_fire_2.svg', '/assets/exec/exec_fire_3.svg', '/assets/exec/exec_fire_4.svg'],
+    residue: '/assets/env/window_residue_fire.svg',
     onSuccess: { san: 0, radioDistort: false },
     onFailure: { san: -5, escaped: true },
   },
@@ -641,8 +641,8 @@ import type { Visitor } from '../schema'
 
 export const v4Coretick: Visitor = {
   id: 'v4-coretick', claimedName: '替班 · 周齐', role: 'coretick', state: 'clean',
-  portrait: '/assets/portraits/v4_coretick_frame1.png',
-  freezeFrames: ['/assets/portraits/v4_coretick_frame1.png', '/assets/portraits/v4_coretick_frame2.png', '/assets/portraits/v4_coretick_frame3.png'],
+  portrait: '/assets/portraits/v4_coretick_frame1.svg',
+  freezeFrames: ['/assets/portraits/v4_coretick_frame1.svg', '/assets/portraits/v4_coretick_frame2.svg', '/assets/portraits/v4_coretick_frame3.svg'],
   glitchLine: '我来替班，你们，快开门',
   tells: { eye: '锁骨下有金属嘀嗒声。', id: '证件崭新得不像话。', questions: [] },
   correctVerdict: 'execute', correctTool: 'gun',
@@ -996,8 +996,8 @@ export const v1Human: Visitor = {
   claimedName: '调度 · 林远',
   role: 'human',
   state: 'clean',
-  portrait: '/assets/portraits/v1_human.png',
-  freezeFrames: ['/assets/portraits/v1_human.png'],
+  portrait: '/assets/portraits/v1_human.svg',
+  freezeFrames: ['/assets/portraits/v1_human.svg'],
   tells: {
     eye: '眼神正常，只是被雨淋得有点烦。',
     id: '证件照片和本人一致，牙齿数对得上。',
@@ -1025,13 +1025,13 @@ export const v2Skinfit: Visitor = {
   claimedName: '维修 · 陈默',
   role: 'skinfit',
   state: 'clean',
-  portrait: '/assets/portraits/v2_skinfit_frame1.png',
+  portrait: '/assets/portraits/v2_skinfit_frame1.svg',
   freezeFrames: [
-    '/assets/portraits/v2_skinfit_frame1.png',
-    '/assets/portraits/v2_skinfit_frame2.png',
-    '/assets/portraits/v2_skinfit_frame3.png',
-    '/assets/portraits/v2_skinfit_frame4.png',
-    '/assets/portraits/v2_skinfit_frame5.png',
+    '/assets/portraits/v2_skinfit_frame1.svg',
+    '/assets/portraits/v2_skinfit_frame2.svg',
+    '/assets/portraits/v2_skinfit_frame3.svg',
+    '/assets/portraits/v2_skinfit_frame4.svg',
+    '/assets/portraits/v2_skinfit_frame5.svg',
   ],
   glitchLine: '我是来修灯的。。灯的线路出了问题',
   tells: {
@@ -1062,13 +1062,13 @@ export const v3Suspicious: Visitor = {
   claimedName: '访客 · 何夕',
   role: 'human',
   state: 'clean',
-  portrait: '/assets/portraits/v3_suspicious_frame1.png',
+  portrait: '/assets/portraits/v3_suspicious_frame1.svg',
   freezeFrames: [
-    '/assets/portraits/v3_suspicious_frame1.png',
-    '/assets/portraits/v3_suspicious_frame2.png',
-    '/assets/portraits/v3_suspicious_frame3.png',
-    '/assets/portraits/v3_suspicious_frame4.png',
-    '/assets/portraits/v3_suspicious_frame5.png',
+    '/assets/portraits/v3_suspicious_frame1.svg',
+    '/assets/portraits/v3_suspicious_frame2.svg',
+    '/assets/portraits/v3_suspicious_frame3.svg',
+    '/assets/portraits/v3_suspicious_frame4.svg',
+    '/assets/portraits/v3_suspicious_frame5.svg',
   ],
   tells: {
     eye: '他眨眼节奏有点乱，但可能只是紧张。',
@@ -1097,13 +1097,13 @@ export const v4Coretick: Visitor = {
   claimedName: '替班 · 周齐',
   role: 'coretick',
   state: 'clean',
-  portrait: '/assets/portraits/v4_coretick_frame1.png',
+  portrait: '/assets/portraits/v4_coretick_frame1.svg',
   freezeFrames: [
-    '/assets/portraits/v4_coretick_frame1.png',
-    '/assets/portraits/v4_coretick_frame2.png',
-    '/assets/portraits/v4_coretick_frame3.png',
-    '/assets/portraits/v4_coretick_frame4.png',
-    '/assets/portraits/v4_coretick_frame5.png',
+    '/assets/portraits/v4_coretick_frame1.svg',
+    '/assets/portraits/v4_coretick_frame2.svg',
+    '/assets/portraits/v4_coretick_frame3.svg',
+    '/assets/portraits/v4_coretick_frame4.svg',
+    '/assets/portraits/v4_coretick_frame5.svg',
   ],
   glitchLine: '我来替班，你们，快开门',
   tells: {
@@ -1587,8 +1587,8 @@ import ExecutionOverlay from './ExecutionOverlay'
 
 const result = {
   success: true,
-  frames: ['/f1.png', '/f2.png', '/f3.png', '/f4.png'],
-  residue: '/r.png',
+  frames: ['/f1.svg', '/f2.svg', '/f3.svg', '/f4.svg'],
+  residue: '/r.svg',
   sanDelta: 0,
   radioDistort: false,
   escaped: false,
@@ -1870,5 +1870,5 @@ git add -A && git commit -m "feat: App 组装 + 开局 + 幻觉，Demo 可玩闭
 ## 附：本计划之外的后续（非代码任务）
 
 1. **内容填充**：`data/visitors/*`、`world.ts`、`endings.ts` 的草稿文案由「DeepSeek 草稿 → Opus 5.5 精修」流水线覆盖（见 spec §7）。Opus 5.5 用直接 API 调用完成，key 不放任何文件。
-2. **Perchance 资产**：`public/assets/` 下的立绘、定格、处决帧、剪影按 spec §8 命名规范由 Perchance 生成后填入路径。
+2. **Opus-SVG 资产**：`public/assets/` 下的立绘、定格帧、处决帧、剪影按 spec §8 命名规范由 Opus 5.5 写 SVG 后填入路径（3D 房间保留 Three.js，不在此列）。
 3. **完整版接口**：实验室/综合楼/收容所/武器区不在此计划内，仅保留 Demo 分数存档接口。
