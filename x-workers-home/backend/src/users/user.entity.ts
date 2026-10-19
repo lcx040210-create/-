@@ -9,6 +9,10 @@ export class User {
   @Column({ type: 'varchar', length: 42, unique: true })
   address: string;
 
+  // 本人邀请码：6 位大写字母数字（排除 0/1/I/O），建号时生成
+  @Column({ name: 'ref_code', type: 'varchar', length: 8, nullable: true, unique: true })
+  refCode: string | null;
+
   // pending_x_binding | active | suspended
   @Column({ type: 'varchar', length: 24, default: 'pending_x_binding' })
   status: string;

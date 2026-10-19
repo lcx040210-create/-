@@ -3,12 +3,13 @@ import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash, randomBytes, randomUUID } from 'crypto';
 import { verifyMessage } from 'ethers';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import {
   toApiBindingStatus,
   XBinding,
   XBindingApiStatus,
 } from '../bindings/x-binding.entity';
+import { ReferralService } from '../referral/referral.service';
 import { User } from '../users/user.entity';
 import { AuthNonce } from './entities/auth-nonce.entity';
 import { RefreshToken } from './entities/refresh-token.entity';
@@ -60,6 +61,8 @@ export class AuthService {
     private readonly refreshTokens: Repository<RefreshToken>,
     @InjectRepository(XBinding)
     private readonly xBindings: Repository<XBinding>,
+    private readonly dataSource: DataSource,
+    private readonly referral: ReferralService,
     private readonly jwt: JwtService,
   ) {}
 
@@ -73,7 +76,11 @@ export class AuthService {
     return { nonce, message: buildLoginMessage(address, nonce) };
   }
 
-  async verify(rawAddress: string, signature: string): Promise<TokenPair> {
+  async verify(
+    rawAddress: string,
+    signature: string,
+    referralCode?: string,
+  ): Promise<TokenPair> {
     const address = rawAddress.toLowerCase();
     const nonceRow = await this.nonces.findOne({ where: { address } });
     if (!nonceRow || nonceRow.used || nonceRow.expiresAt.getTime() <= Date.now()) {
@@ -106,9 +113,32 @@ export class AuthService {
 
     let user = await this.users.findOne({ where: { address } });
     if (!user) {
-      user = await this.users.save(
-        this.users.create({ address, status: 'pending_x_binding', role: 'user' }),
-      );
+      // 首次建号：生成邀请码 +（可选）绑定邀请关系，同一事务提交。
+      // 已存在用户的 verify 是登录，忽略 referralCode，不重绑。
+      user = await this.dataSource.transaction(async (tx) => {
+        const repo = tx.getRepository(User);
+        const existing = await repo.findOne({ where: { address } });
+        if (existing) return existing;
+
+        const created = await repo.save(
+          repo.create({
+            address,
+            status: 'pending_x_binding',
+            role: 'user',
+            refCode: await this.referral.allocateCode(tx),
+          }),
+        );
+
+        const code = (referralCode ?? '').trim();
+        if (code) {
+          await this.referral.bindInvitee(tx, {
+            inviteeUserId: created.id,
+            inviteeAddress: address,
+            code,
+          });
+        }
+        return created;
+      });
     }
 
     return this.issueTokens(user);

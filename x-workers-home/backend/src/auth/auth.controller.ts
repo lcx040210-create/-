@@ -17,7 +17,7 @@ export class AuthController {
 
   @Post('verify')
   verify(@Body() dto: VerifyDto) {
-    return this.authService.verify(dto.address, dto.signature);
+    return this.authService.verify(dto.address, dto.signature, dto.referralCode);
   }
 
   @Post('refresh')

@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString, Matches } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, Matches } from 'class-validator';
 import { ADDRESS_PATTERN } from './nonce.dto';
 
 export class VerifyDto {
@@ -9,4 +9,9 @@ export class VerifyDto {
   @IsString()
   @IsNotEmpty()
   signature: string;
+
+  // 邀请码：仅首次建号时生效；已存在用户登录时忽略
+  @IsOptional()
+  @IsString()
+  referralCode?: string;
 }

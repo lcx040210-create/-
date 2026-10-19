@@ -9,6 +9,7 @@ import { DataSource, EntityManager, In, MoreThan, Repository } from 'typeorm';
 import { BindingsService } from '../bindings/bindings.service';
 import { MICRO, formatXm, parseXm, pctFloor } from '../common/money';
 import { LedgerService } from '../ledger/ledger.service';
+import { ReferralService } from '../referral/referral.service';
 import { User } from '../users/user.entity';
 import { Withdrawal, WithdrawalStatus } from './withdrawal.entity';
 
@@ -56,6 +57,7 @@ export class WithdrawalsService {
     private readonly dataSource: DataSource,
     private readonly ledger: LedgerService,
     private readonly bindings: BindingsService,
+    private readonly referral: ReferralService,
   ) {}
 
   /**
@@ -189,6 +191,13 @@ export class WithdrawalsService {
         amountMicro: locked.amountMicro,
         kind: 'withdrawal_paid',
         ref: { type: 'withdrawal', id: locked.id },
+      });
+
+      // 提现费是返佣基数：同一事务内给邀请人发返佣（无邀请人则 no-op）
+      await this.referral.onFeeEvent(tx, {
+        userId: locked.userId,
+        feeMicro: locked.feeMicro,
+        feeKind: 'withdrawal',
       });
 
       locked.status = 'paid';

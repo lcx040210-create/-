@@ -9,6 +9,7 @@ import { HealthController } from './health/health.controller';
 import { LedgerModule } from './ledger/ledger.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { RatingsModule } from './ratings/ratings.module';
+import { ReferralModule } from './referral/referral.module';
 import { WithdrawalsModule } from './withdrawals/withdrawals.module';
 
 @Module({
@@ -24,6 +25,7 @@ import { WithdrawalsModule } from './withdrawals/withdrawals.module';
     LedgerModule,
     NotificationsModule,
     RatingsModule,
+    ReferralModule,
     WithdrawalsModule,
   ],
   controllers: [HealthController],
