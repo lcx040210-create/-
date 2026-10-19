@@ -223,6 +223,21 @@ describe('双向互评 e2e', () => {
     await postReview(outsiderToken, randomUUID(), { score: 5 }).expect(404);
   });
 
+  it('商家 == 接单方（自抢单）→ 评价自己 400；正常互评不受影响', async () => {
+    const self = await makeUser();
+    const { slotId } = await makeSlot({ merchant: self, taker: self });
+    const token = await signToken(self);
+
+    const res = await postReview(token, slotId, { score: 5 }).expect(400);
+    expect(res.body.message).toContain('不能评价自己');
+    expect(await ds.getRepository(Review).count({ where: { slotId } })).toBe(0);
+
+    // 正常两名当事人的互评不受该守卫影响。
+    const normal = await makeSlot();
+    await postReview(await signToken(normal.merchant), normal.slotId, { score: 5 }).expect(201);
+    await postReview(await signToken(normal.taker), normal.slotId, { score: 4 }).expect(201);
+  });
+
   it('score 越界 / 非整数 / 多余字段 → 400', async () => {
     const { merchant, slotId } = await makeSlot();
     const token = await signToken(merchant);

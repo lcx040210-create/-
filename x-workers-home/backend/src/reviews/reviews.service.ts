@@ -80,6 +80,10 @@ export class ReviewsService {
         } else {
           throw new ForbiddenException('只有交易双方可以评价');
         }
+        // 商家自抢单（merchant === creator）时两侧指向同一人，禁止自评刷分。
+        if (toUserId === fromUserId) {
+          throw new BadRequestException('不能评价自己');
+        }
 
         const repo = tx.getRepository(Review);
         const comment = dto.comment?.trim() || null;
