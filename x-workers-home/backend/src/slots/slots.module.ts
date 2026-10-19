@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { XBinding } from '../bindings/x-binding.entity';
 import { JobsModule } from '../jobs/jobs.module';
 import { LedgerModule } from '../ledger/ledger.module';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -12,7 +13,7 @@ import { SlotsService } from './slots.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([OrderSlot, Order, User]),
+    TypeOrmModule.forFeature([OrderSlot, Order, User, XBinding]),
     LedgerModule,
     ReferralModule,
     JobsModule,

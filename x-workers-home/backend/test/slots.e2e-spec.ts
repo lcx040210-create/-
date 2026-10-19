@@ -76,6 +76,15 @@ describe('抢单防超卖 / 交付 / 3h 超时 e2e', () => {
     );
   }
 
+  /** 接单方需 active + X 绑定 active（spec §2）。 */
+  async function makeTaker(
+    opts: { nickname?: string; ratingGrade?: string | null } = {},
+  ): Promise<User> {
+    const user = await makeUser(opts);
+    await bindX(user.id);
+    return user;
+  }
+
   async function fund(userId: string, amountMicro: bigint): Promise<void> {
     await ds.transaction((tx) =>
       ledger.credit(tx, {
@@ -228,7 +237,7 @@ describe('抢单防超卖 / 交付 / 3h 超时 e2e', () => {
 
   it('并发抢最后 1 个名额：5 个用户并发 → 恰 1 成功、4 个 400（订单行锁防超卖）', async () => {
     const { orderId } = await makeOrder({ priceXm: '100', slots: 1 });
-    const takers = await Promise.all(Array.from({ length: 5 }, () => makeUser()));
+    const takers = await Promise.all(Array.from({ length: 5 }, () => makeTaker()));
     const tokens = await Promise.all(takers.map((u) => signToken(u)));
 
     // 先同步创建 5 个请求再一起 await：真实并发（独立 HTTP 连接 / 独立事务）
@@ -252,7 +261,7 @@ describe('抢单防超卖 / 交付 / 3h 超时 e2e', () => {
 
   it('2 个名额：5 个用户并发 → 恰 2 成功、3 个 400', async () => {
     const { orderId } = await makeOrder({ priceXm: '100', slots: 2 });
-    const takers = await Promise.all(Array.from({ length: 5 }, () => makeUser()));
+    const takers = await Promise.all(Array.from({ length: 5 }, () => makeTaker()));
     const tokens = await Promise.all(takers.map((u) => signToken(u)));
 
     const results = await Promise.allSettled(tokens.map((token) => take(token, orderId)));
@@ -271,7 +280,7 @@ describe('抢单防超卖 / 交付 / 3h 超时 e2e', () => {
 
   it('同一用户对同一单二次抢 → 400；首单成功且交付截止 = 接单 + 3h', async () => {
     const { orderId } = await makeOrder({ slots: 2 });
-    const user = await makeUser();
+    const user = await makeTaker();
     const token = await signToken(user);
 
     const first = await take(token, orderId).expect(201);
@@ -294,7 +303,7 @@ describe('抢单防超卖 / 交付 / 3h 超时 e2e', () => {
 
   it('部分唯一索引：同单同用户第二个活跃名额被 DB 拒绝；expired / refunded 不占位', async () => {
     const { orderId } = await makeOrder({ slots: 3 });
-    const taker = await makeUser();
+    const taker = await makeTaker();
 
     const insert = (status: string): Promise<Array<{ id: string }>> =>
       ds.query(
@@ -340,8 +349,8 @@ describe('抢单防超卖 / 交付 / 3h 超时 e2e', () => {
     const incomeBefore = await incomeAvailable();
     const referrerBefore = await availableOf(referrer.id);
 
-    const takerA = await makeUser();
-    const takerB = await makeUser();
+    const takerA = await makeTaker();
+    const takerB = await makeTaker();
     await take(await signToken(takerA), orderId).expect(201);
 
     expect(await escrowAvailable()).toBe(escrowBefore - fee);
@@ -392,7 +401,7 @@ describe('抢单防超卖 / 交付 / 3h 超时 e2e', () => {
     expect(order.feeEarned).toBe(false);
     await assertEscrowInvariant(orderId);
 
-    const takerA = await makeUser();
+    const takerA = await makeTaker();
     const tokenA = await signToken(takerA);
     const slotA = (await take(tokenA, orderId).expect(201)).body;
     order = await ds.getRepository(Order).findOneOrFail({ where: { id: orderId } });
@@ -404,7 +413,7 @@ describe('抢单防超卖 / 交付 / 3h 超时 e2e', () => {
     expect(order.escrowMicro).toBe(210n * XM - fee);
     await assertEscrowInvariant(orderId);
 
-    const takerB = await makeUser();
+    const takerB = await makeTaker();
     await take(await signToken(takerB), orderId).expect(201);
     order = await ds.getRepository(Order).findOneOrFail({ where: { id: orderId } });
     expect(order.escrowMicro).toBe(200n * XM);
@@ -421,9 +430,9 @@ describe('抢单防超卖 / 交付 / 3h 超时 e2e', () => {
     await assertEscrowInvariant(orderId);
   });
 
-  it('3h 超时：reserved→expired、violations+1、通知落库、名额回池可再抢（escrow 不动）', async () => {
-    const { orderId } = await makeOrder({ priceXm: '100', slots: 1 });
-    const takerA = await makeUser();
+  it('3h 超时：reserved→expired、violations+1、通知落库、名额回池可再抢（escrow 不动、商家不回款）', async () => {
+    const { merchant, orderId } = await makeOrder({ priceXm: '100', slots: 1 });
+    const takerA = await makeTaker();
     const slotA = (await take(await signToken(takerA), orderId).expect(201)).body;
 
     const before = await ds.getRepository(User).findOneOrFail({ where: { id: takerA.id } });
@@ -463,19 +472,21 @@ describe('抢单防超卖 / 交付 / 3h 超时 e2e', () => {
       }),
     ).toBe(1);
 
-    // 名额回池：他人可再抢；escrow 保持不变
+    // 名额回池：他人可再抢；escrow 保持不变，商家未收到任何退款
     const escrowBefore = await escrowAvailable();
-    const takerB = await makeUser();
+    const merchantBefore = await availableOf(merchant.id);
+    const takerB = await makeTaker();
     await take(await signToken(takerB), orderId).expect(201);
     const activeRows = (await slotRows(orderId)).filter((row) => row.status !== 'expired');
     expect(activeRows).toHaveLength(1);
     expect(activeRows[0].creatorUserId).toBe(takerB.id);
     expect(await escrowAvailable()).toBe(escrowBefore);
+    expect(await availableOf(merchant.id)).toBe(merchantBefore);
   });
 
   it('交付：reserved→verifying、记录链接、delivery 任务入队；非本人 403、重复交付 400', async () => {
     const { orderId } = await makeOrder({ slots: 2 });
-    const taker = await makeUser();
+    const taker = await makeTaker();
     const token = await signToken(taker);
     const slot = (await take(token, orderId).expect(201)).body;
 
@@ -516,7 +527,7 @@ describe('抢单防超卖 / 交付 / 3h 超时 e2e', () => {
 
   it('deadline 之后交付 → 400（锁内复核），名额保持 reserved 等待 cron', async () => {
     const { orderId } = await makeOrder({ slots: 1 });
-    const taker = await makeUser();
+    const taker = await makeTaker();
     const token = await signToken(taker);
     const slot = (await take(token, orderId).expect(201)).body;
 
@@ -534,8 +545,8 @@ describe('抢单防超卖 / 交付 / 3h 超时 e2e', () => {
 
   it('同一交付链接出现在其他名额 → 409（且不落 task）', async () => {
     const { orderId } = await makeOrder({ slots: 2 });
-    const takerA = await makeUser();
-    const takerB = await makeUser();
+    const takerA = await makeTaker();
+    const takerB = await makeTaker();
     const tokenA = await signToken(takerA);
     const tokenB = await signToken(takerB);
     const slotA = (await take(tokenA, orderId).expect(201)).body;
@@ -555,13 +566,61 @@ describe('抢单防超卖 / 交付 / 3h 超时 e2e', () => {
     ).toBe(0);
   });
 
+  it('两个名额并发交付同一 URL → 恰一个成功、一个 409；变体链接同样拒绝', async () => {
+    const { orderId } = await makeOrder({ slots: 2 });
+    const takerA = await makeTaker();
+    const takerB = await makeTaker();
+    const tokenA = await signToken(takerA);
+    const tokenB = await signToken(takerB);
+    const slotA = (await take(tokenA, orderId).expect(201)).body;
+    const slotB = (await take(tokenB, orderId).expect(201)).body;
+
+    const url = 'https://x.com/race/status/4242';
+    const results = await Promise.allSettled([
+      deliver(tokenA, slotA.id, url),
+      deliver(tokenB, slotB.id, url),
+    ]);
+    const statuses = results.map((result) =>
+      result.status === 'fulfilled' ? result.value.status : -1,
+    );
+    expect(statuses.filter((status) => status === 200)).toHaveLength(1);
+    expect(statuses.filter((status) => status === 409)).toHaveLength(1);
+
+    const rows = await slotRows(orderId);
+    expect(rows.filter((row) => row.status === 'verifying')).toHaveLength(1);
+    expect(rows.filter((row) => row.status === 'reserved')).toHaveLength(1);
+    expect(
+      await ds.getRepository(VerificationJob).count({
+        where: { type: 'delivery', refId: In([slotA.id, slotB.id]) },
+      }),
+    ).toBe(1);
+
+    // 变体绕过（twitter.com / 大写路径 / 尾斜杠 / 查询串）→ 规范化后仍命中唯一链接
+    const loser = rows.find((row) => row.status === 'reserved')!;
+    const loserToken = loser.creatorUserId === takerA.id ? tokenA : tokenB;
+    const variant = await deliver(
+      loserToken,
+      loser.id,
+      'http://www.twitter.com/Race/status/4242/?s=20#top',
+    ).expect(409);
+    expect(variant.body.message).toContain('链接');
+
+    // 迁移的部分唯一索引本身兜底（即使代码预查被绕过）
+    await expect(
+      ds.query(`UPDATE "order_slots" SET "delivery_url" = $1 WHERE "id" = $2`, [
+        url,
+        loser.id,
+      ]),
+    ).rejects.toThrow(/uq_order_slots_delivery_url/);
+  });
+
   it('close 携带：有活跃名额只退自由池（escrow − P×active），fee 不退，活跃名额保留', async () => {
     const { merchant, token: merchantToken, orderId } = await makeOrder({
       priceXm: '100',
       slots: 3,
     });
-    const takerA = await makeUser();
-    const takerB = await makeUser();
+    const takerA = await makeTaker();
+    const takerB = await makeTaker();
     await take(await signToken(takerA), orderId).expect(201);
     await take(await signToken(takerB), orderId).expect(201);
 
@@ -602,9 +661,63 @@ describe('抢单防超卖 / 交付 / 3h 超时 e2e', () => {
     expect(refundEntries[1].availableDelta).toBe(100n * XM);
   });
 
+  it('close 后活跃名额超时 → 名额 refunded、P 退商家、escrow 不变量成立（不回池）', async () => {
+    const { merchant, token: merchantToken, orderId } = await makeOrder({
+      priceXm: '100',
+      slots: 3,
+    });
+    const takerA = await makeTaker();
+    const takerB = await makeTaker();
+    await take(await signToken(takerA), orderId).expect(201);
+    const slotB = (await take(await signToken(takerB), orderId).expect(201)).body;
+
+    await request(server())
+      .post(`/api/orders/${orderId}/close`)
+      .set(auth(merchantToken))
+      .expect(200);
+    const merchantAfterClose = await availableOf(merchant.id);
+    expect(
+      (await ds.getRepository(Order).findOneOrFail({ where: { id: orderId } })).escrowMicro,
+    ).toBe(200n * XM);
+
+    // 隔离：先消化此前用例遗留的到期名额，保证本次扫描计数只针对 slotB
+    await slotsService.expireOverdue();
+    await setDeadline(slotB.id, new Date(Date.now() - 1000));
+    const escrowBefore = await escrowAvailable();
+    expect(await slotsService.expireOverdue()).toBe(1);
+
+    // 名额置 refunded（不是 expired、不回自由池），P 从 escrow 退回商家
+    const expired = await ds.getRepository(OrderSlot).findOneOrFail({ where: { id: slotB.id } });
+    expect(expired.status).toBe('refunded');
+    expect(await availableOf(merchant.id)).toBe(merchantAfterClose + 100n * XM);
+    expect(await escrowAvailable()).toBe(escrowBefore - 100n * XM);
+
+    const order = await ds.getRepository(Order).findOneOrFail({ where: { id: orderId } });
+    expect(order.escrowMicro).toBe(100n * XM); // A 的名额仍在托管
+    await assertEscrowInvariant(orderId);
+
+    const refundEntries = await ds.getRepository(LedgerEntry).find({
+      where: { kind: 'order_refund', refType: 'slot', refId: slotB.id },
+      order: { availableDelta: 'ASC' },
+    });
+    expect(refundEntries).toHaveLength(2);
+    expect(refundEntries[0].accountId).toBe(PLATFORM_ACCOUNTS.escrow);
+    expect(refundEntries[0].availableDelta).toBe(-100n * XM);
+    expect(refundEntries[1].userId).toBe(merchant.id);
+    expect(refundEntries[1].availableDelta).toBe(100n * XM);
+
+    const takerAfter = await ds.getRepository(User).findOneOrFail({ where: { id: takerB.id } });
+    expect(takerAfter.violations).toBe(1);
+    expect(
+      await ds.getRepository(Notification).count({
+        where: { userId: takerB.id, kind: 'slot_expired' },
+      }),
+    ).toBe(1);
+  });
+
   it('订单详情公开名额列表：状态/时间/昵称/评级，脱敏不暴露 delivery_url；slotsAvailable 扣减', async () => {
     const { orderId } = await makeOrder({ slots: 3 });
-    const taker = await makeUser({ nickname: 'Alice', ratingGrade: 'A' });
+    const taker = await makeTaker({ nickname: 'Alice', ratingGrade: 'A' });
     const token = await signToken(taker);
     const slot = (await take(token, orderId).expect(201)).body;
     const url = 'https://x.com/secret-delivery/status/555';
@@ -631,7 +744,7 @@ describe('抢单防超卖 / 交付 / 3h 超时 e2e', () => {
 
   it('GET /api/me/slots：本人名额 + 订单摘要 + 倒计时/deadline/lastReject/appeal；未登录 401', async () => {
     const { orderId } = await makeOrder({ slots: 2 });
-    const taker = await makeUser();
+    const taker = await makeTaker();
     const other = await makeUser();
     const token = await signToken(taker);
     const slot = (await take(token, orderId).expect(201)).body;
@@ -666,8 +779,29 @@ describe('抢单防超卖 / 交付 / 3h 超时 e2e', () => {
     expect(others.body.items).toHaveLength(0);
   });
 
+  it('接单资格：需 active + X 绑定 active；未绑定 400、非 active 403，绑定后放行', async () => {
+    const { orderId } = await makeOrder({ slots: 3 });
+
+    const unbound = await makeUser();
+    const unboundRes = await take(await signToken(unbound), orderId).expect(400);
+    expect(unboundRes.body.message).toContain('X 绑定');
+
+    const suspended = await makeUser({ status: 'suspended' });
+    await bindX(suspended.id);
+    const suspendedRes = await take(await signToken(suspended), orderId).expect(403);
+    expect(suspendedRes.body.message).toContain('接单');
+
+    // 资格不满足时不产生名额
+    expect(await slotRows(orderId)).toHaveLength(0);
+
+    // 补绑 X 后同一用户可正常接单
+    await bindX(unbound.id);
+    await take(await signToken(unbound), orderId).expect(201);
+    expect(await slotRows(orderId)).toHaveLength(1);
+  });
+
   it('抢单校验：不存在 404、非 UUID 400、closed 400、已过期 400、满员 400', async () => {
-    const taker = await makeUser();
+    const taker = await makeTaker();
     const token = await signToken(taker);
 
     await take(token, randomUUID()).expect(404);
@@ -692,7 +826,7 @@ describe('抢单防超卖 / 交付 / 3h 超时 e2e', () => {
 
     // 满员（1 名额已被他人占）
     const fullOrder = await makeOrder({ slots: 1 });
-    const first = await makeUser();
+    const first = await makeTaker();
     await take(await signToken(first), fullOrder.orderId).expect(201);
     const fullRes = await take(token, fullOrder.orderId).expect(400);
     expect(fullRes.body.message).toContain('名额已满');

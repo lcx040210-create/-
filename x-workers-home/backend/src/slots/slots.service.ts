@@ -3,8 +3,10 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  InternalServerErrorException,
   Logger,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { Interval } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -17,6 +19,7 @@ import {
   Not,
   Repository,
 } from 'typeorm';
+import { XBinding } from '../bindings/x-binding.entity';
 import { formatXm, pctFloor } from '../common/money';
 import { SchedulerService } from '../jobs/scheduler.service';
 import { LedgerService } from '../ledger/ledger.service';
@@ -72,6 +75,32 @@ function isUniqueViolation(err: unknown): boolean {
   );
 }
 
+/** x.com / twitter.com 及其 www/mobile/m 变体。 */
+const TWEET_HOST_PATTERN = /^(?:www\.|mobile\.|m\.)?(?:x|twitter)\.com$/;
+
+/**
+ * 交付链接规范化：x/twitter 链接统一为 `https://x.com/<小写路径>`，
+ * 去掉末尾斜杠、查询串与锚点，避免同一推文用 twitter.com / 尾斜杠 / 追踪参数
+ * 等变体绕过唯一约束。其他站点保持用户输入（仅 trim）。
+ */
+export function canonicalizeDeliveryUrl(raw: string): string {
+  const trimmed = raw.trim();
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    throw new BadRequestException('交付链接不合法');
+  }
+
+  const host = parsed.hostname.toLowerCase();
+  if (!TWEET_HOST_PATTERN.test(host)) {
+    return trimmed;
+  }
+
+  const path = parsed.pathname.toLowerCase().replace(/\/+$/, '') || '/';
+  return `https://x.com${path}`;
+}
+
 @Injectable()
 export class SlotsService {
   private readonly logger = new Logger(SlotsService.name);
@@ -108,6 +137,9 @@ export class SlotsService {
         if (order.status !== 'recruiting' || order.expiresAt.getTime() <= now.getTime()) {
           throw new BadRequestException('该商单不可接');
         }
+
+        // 接单资格：active + X 绑定 active（spec §2 双绑齐备）。
+        await this.assertEligible(tx, userId);
 
         const slotRepo = tx.getRepository(OrderSlot);
         const taken = await slotRepo.count({
@@ -163,41 +195,51 @@ export class SlotsService {
    * 链接已在其他名额出现则 409。事务提交后再入队核验任务（T13 handler）。
    */
   async deliver(slotId: string, userId: string, deliveryUrl: string): Promise<SlotView> {
-    const url = deliveryUrl.trim();
-    const slot = await this.dataSource.transaction(async (tx) => {
-      const repo = tx.getRepository(OrderSlot);
-      const row = await repo.findOne({
-        where: { id: slotId },
-        lock: { mode: 'pessimistic_write' },
-      });
-      if (!row) {
-        throw new NotFoundException('名额不存在');
-      }
-      if (row.creatorUserId !== userId) {
-        throw new ForbiddenException('只能交付自己的名额');
-      }
-      if (row.status !== 'reserved') {
-        throw new BadRequestException('当前名额状态不可交付');
-      }
+    const url = canonicalizeDeliveryUrl(deliveryUrl);
 
-      const now = new Date();
-      // 恰在 deadline 时刻即视为超时（与 cron 的 <= 语义一致）。
-      if (now.getTime() >= row.deliverDeadlineAt.getTime()) {
-        throw new BadRequestException('已超过交付截止时间');
-      }
+    let slot: OrderSlot;
+    try {
+      slot = await this.dataSource.transaction(async (tx) => {
+        const repo = tx.getRepository(OrderSlot);
+        const row = await repo.findOne({
+          where: { id: slotId },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (!row) {
+          throw new NotFoundException('名额不存在');
+        }
+        if (row.creatorUserId !== userId) {
+          throw new ForbiddenException('只能交付自己的名额');
+        }
+        if (row.status !== 'reserved') {
+          throw new BadRequestException('当前名额状态不可交付');
+        }
 
-      const duplicate = await repo.findOne({
-        where: { deliveryUrl: url, id: Not(slotId) },
+        const now = new Date();
+        // 恰在 deadline 时刻即视为超时（与 cron 的 <= 语义一致）。
+        if (now.getTime() >= row.deliverDeadlineAt.getTime()) {
+          throw new BadRequestException('已超过交付截止时间');
+        }
+
+        // 预查给友好 409；并发窗口由 uq_order_slots_delivery_url 兜底。
+        const duplicate = await repo.findOne({
+          where: { deliveryUrl: url, id: Not(slotId) },
+        });
+        if (duplicate) {
+          throw new ConflictException('该链接已用于其他名额');
+        }
+
+        row.status = 'verifying';
+        row.deliveredAt = now;
+        row.deliveryUrl = url;
+        return repo.save(row);
       });
-      if (duplicate) {
+    } catch (err) {
+      if (isUniqueViolation(err)) {
         throw new ConflictException('该链接已用于其他名额');
       }
-
-      row.status = 'verifying';
-      row.deliveredAt = now;
-      row.deliveryUrl = url;
-      return repo.save(row);
-    });
+      throw err;
+    }
 
     await this.scheduler.enqueue('delivery', slot.id, {});
 
@@ -274,10 +316,25 @@ export class SlotsService {
     return expired;
   }
 
-  /** 锁内复核状态与 deadline，避免与并发的交付/重复扫描竞争。 */
+  /**
+   * 锁内复核状态与 deadline，避免与并发的交付/重复扫描竞争。
+   * 订单已下架（非 recruiting）时名额不再回池：托管中的 P 退给商家、名额置
+   * refunded；否则 closed 订单的 escrow = P×活跃名额 不变量被破坏且资金滞留。
+   */
   private async expireOne(slotId: string, now: Date): Promise<boolean> {
     return this.dataSource.transaction(async (tx) => {
       const repo = tx.getRepository(OrderSlot);
+      const preview = await repo.findOne({ where: { id: slotId } });
+      if (!preview) return false;
+
+      // 锁顺序与 take / close 一致：订单行 → 名额行 → ledger 账户（ledger 内部排序）。
+      const orderRepo = tx.getRepository(Order);
+      const order = await orderRepo.findOne({
+        where: { id: preview.orderId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!order) return false;
+
       const slot = await repo.findOne({
         where: { id: slotId },
         lock: { mode: 'pessimistic_write' },
@@ -290,7 +347,25 @@ export class SlotsService {
         return false;
       }
 
-      slot.status = 'expired';
+      const recruiting = order.status === 'recruiting';
+      if (recruiting) {
+        slot.status = 'expired';
+      } else {
+        // 关单后超时：托管中的 P 退回商家，名额不再占用 escrow（不回自由池）。
+        if (order.escrowMicro < order.priceMicro) {
+          throw new InternalServerErrorException('托管不变量异常：关单名额退款超出托管');
+        }
+        await this.ledger.transfer(tx, {
+          from: { platform: 'escrow' },
+          to: { userId: order.merchantUserId },
+          amountMicro: order.priceMicro,
+          kind: 'order_refund',
+          ref: { type: 'slot', id: slot.id },
+        });
+        order.escrowMicro -= order.priceMicro;
+        await orderRepo.save(order);
+        slot.status = 'refunded';
+      }
       await repo.save(slot);
 
       await tx.getRepository(User).increment({ id: slot.creatorUserId }, 'violations', 1);
@@ -298,12 +373,29 @@ export class SlotsService {
         userId: slot.creatorUserId,
         kind: 'slot_expired',
         title: '接单超时已释放',
-        body: '你未在 3 小时内提交交付，该名额已回到自由池，并记录一次违约。',
+        body: recruiting
+          ? '你未在 3 小时内提交交付，该名额已回到自由池，并记录一次违约。'
+          : '你未在 3 小时内提交交付，该商单已下架，名额托管已退回商家，并记录一次违约。',
         ref: { type: 'slot', id: slot.id },
       });
 
       return true;
     });
+  }
+
+  /** 接单资格（spec §2）：用户 active + X 绑定 active。 */
+  private async assertEligible(tx: EntityManager, userId: string): Promise<void> {
+    const user = await tx.getRepository(User).findOne({ where: { id: userId } });
+    if (!user) {
+      throw new UnauthorizedException('用户不存在');
+    }
+    if (user.status !== 'active') {
+      throw new ForbiddenException('账号状态异常，暂不可接单');
+    }
+    const binding = await tx.getRepository(XBinding).findOne({ where: { userId } });
+    if (!binding || binding.status !== 'active') {
+      throw new BadRequestException('请先完成 X 绑定后再接单');
+    }
   }
 
   /** 首次被抢：escrow → income（fee），标记 fee_earned、扣减订单托管、触发返佣。 */
