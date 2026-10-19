@@ -5,7 +5,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, MoreThan, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, MoreThan, Repository } from 'typeorm';
 import { BindingsService } from '../bindings/bindings.service';
 import { MICRO, formatXm, parseXm, pctFloor } from '../common/money';
 import { LedgerService } from '../ledger/ledger.service';
@@ -53,8 +53,6 @@ export class WithdrawalsService {
   constructor(
     @InjectRepository(Withdrawal)
     private readonly withdrawals: Repository<Withdrawal>,
-    @InjectRepository(User)
-    private readonly users: Repository<User>,
     private readonly dataSource: DataSource,
     private readonly ledger: LedgerService,
     private readonly bindings: BindingsService,
@@ -73,23 +71,28 @@ export class WithdrawalsService {
       throw new BadRequestException('提现金额必须是 10 XM 的整数倍');
     }
 
-    await this.assertCooldown(userId);
-    if (await this.bindings.hasPendingChange(userId, 'wallet')) {
-      throw new BadRequestException('存在未生效的钱包改绑申请，暂不可提现');
-    }
-
-    const user = await this.users.findOne({ where: { id: userId } });
-    if (!user) {
-      throw new UnauthorizedException('用户不存在');
-    }
-    if (!WALLET_PATTERN.test(user.address ?? '')) {
-      throw new BadRequestException('绑定钱包地址无效，请重新绑定钱包');
-    }
-
     const feeMicro = pctFloor(amount, WITHDRAWAL_FEE_NUM, WITHDRAWAL_FEE_DEN);
     const payoutMicro = amount - feeMicro;
 
     const row = await this.dataSource.transaction(async (tx) => {
+      // 用户级串行锁（user 行 → account 行，与既有资金流锁序一致）：
+      // 冷却/改绑都是 check-then-act，并发双击/脚本不得同时通过。
+      const user = await tx.getRepository(User).findOne({
+        where: { id: userId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!user) {
+        throw new UnauthorizedException('用户不存在');
+      }
+
+      await this.assertCooldown(tx, userId);
+      if (await this.bindings.hasPendingChange(userId, 'wallet', tx)) {
+        throw new BadRequestException('存在未生效的钱包改绑申请，暂不可提现');
+      }
+      if (!WALLET_PATTERN.test(user.address ?? '')) {
+        throw new BadRequestException('绑定钱包地址无效，请重新绑定钱包');
+      }
+
       const repo = tx.getRepository(Withdrawal);
       // 先建行拿 id，冻结流水的 ref 用 withdrawal.id；任一步失败整体回滚。
       const created = await repo.save(
@@ -241,8 +244,8 @@ export class WithdrawalsService {
   }
 
   /** 24h 滚动窗口：本人存在 pending/approved/paid 且 created_at > now−24h 即拦截。 */
-  private async assertCooldown(userId: string): Promise<void> {
-    const recent = await this.withdrawals.count({
+  private async assertCooldown(tx: EntityManager, userId: string): Promise<void> {
+    const recent = await tx.getRepository(Withdrawal).count({
       where: {
         userId,
         status: In(COOLDOWN_STATUSES),

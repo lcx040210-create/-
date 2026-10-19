@@ -283,6 +283,35 @@ describe('提现 e2e（规则校验 + 立即冻结 + 人工审核流）', () => 
     });
   });
 
+  it('并发两个申请（余额足够）→ 恰一个 201、一个 400，DB 仅一条 pending', async () => {
+    const user = await makeUser();
+    await fund(user.id, 100n * XM);
+    const token = await signToken(user);
+
+    const [first, second] = await Promise.all([
+      requestWithdrawal(token, '50'),
+      requestWithdrawal(token, '50'),
+    ]);
+    expect([first.status, second.status].sort()).toEqual([201, 400]);
+
+    const rows = await ds
+      .getRepository(Withdrawal)
+      .find({ where: { userId: user.id } });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].status).toBe('pending');
+
+    // 只有成功的那笔冻结了余额
+    expect(await balancesOf(user.id)).toEqual({
+      available: 50n * XM,
+      frozen: 50n * XM,
+    });
+    expect(
+      await ds.getRepository(LedgerEntry).count({
+        where: { refType: 'withdrawal', refId: rows[0].id },
+      }),
+    ).toBe(1);
+  });
+
   it('rejected 后立即重发 → 允许（驳回不吃冷却，冻结退回可用）', async () => {
     const user = await makeUser();
     const admin = await makeUser(undefined, 'admin');

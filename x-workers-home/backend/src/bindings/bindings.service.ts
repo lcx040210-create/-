@@ -13,6 +13,7 @@ import { randomBytes } from 'crypto';
 import { isAddress, verifyMessage } from 'ethers';
 import {
   DataSource,
+  EntityManager,
   FindOptionsWhere,
   In,
   IsNull,
@@ -213,43 +214,53 @@ export class BindingsService implements OnModuleInit {
     }
     const newAddress = rawNewAddress.toLowerCase();
 
-    const user = await this.users.findOne({ where: { id: userId } });
-    if (!user) {
-      throw new UnauthorizedException('用户不存在');
-    }
-    if (user.address.toLowerCase() === newAddress) {
-      throw new BadRequestException('新地址与当前地址相同');
-    }
+    // 用户级串行锁：并发改绑请求都读到「无 pending」再各自插入的窗口被关掉。
+    // 锁序：user 行 → binding_changes（只读校验）→ 插入；与提现流一致。
+    const { change, message } = await this.dataSource.transaction(async (tx) => {
+      const userRepo = tx.getRepository(User);
+      const user = await userRepo.findOne({
+        where: { id: userId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!user) {
+        throw new UnauthorizedException('用户不存在');
+      }
+      if (user.address.toLowerCase() === newAddress) {
+        throw new BadRequestException('新地址与当前地址相同');
+      }
 
-    const message = buildWalletChangeMessage(user.address, newAddress);
-    let recovered: string;
-    try {
-      recovered = verifyMessage(message, signature);
-    } catch {
-      throw new BadRequestException('新地址签名无效');
-    }
-    if (recovered.toLowerCase() !== newAddress) {
-      throw new BadRequestException('新地址签名无效');
-    }
+      const message = buildWalletChangeMessage(user.address, newAddress);
+      let recovered: string;
+      try {
+        recovered = verifyMessage(message, signature);
+      } catch {
+        throw new BadRequestException('新地址签名无效');
+      }
+      if (recovered.toLowerCase() !== newAddress) {
+        throw new BadRequestException('新地址签名无效');
+      }
 
-    const occupied = await this.users.findOne({ where: { address: newAddress } });
-    if (occupied && occupied.id !== userId) {
-      throw new ConflictException('该地址已被其他用户使用');
-    }
-    if (await this.hasPendingChange(userId, 'wallet')) {
-      throw new ConflictException('已有待处理的改绑申请');
-    }
+      const occupied = await userRepo.findOne({ where: { address: newAddress } });
+      if (occupied && occupied.id !== userId) {
+        throw new ConflictException('该地址已被其他用户使用');
+      }
+      if (await this.hasPendingChange(userId, 'wallet', tx)) {
+        throw new ConflictException('已有待处理的改绑申请');
+      }
 
-    const change = await this.changes.save(
-      this.changes.create({
-        userId,
-        kind: 'wallet',
-        newValue: newAddress,
-        status: 'pending',
-        effectiveAt: new Date(Date.now() + BINDING_CHANGE_COOLDOWN_MS),
-        appliedAt: null,
-      }),
-    );
+      const changes = tx.getRepository(BindingChange);
+      const change = await changes.save(
+        changes.create({
+          userId,
+          kind: 'wallet',
+          newValue: newAddress,
+          status: 'pending',
+          effectiveAt: new Date(Date.now() + BINDING_CHANGE_COOLDOWN_MS),
+          appliedAt: null,
+        }),
+      );
+      return { change, message };
+    });
 
     return { ...this.toChangeView(change), message };
   }
@@ -266,14 +277,20 @@ export class BindingsService implements OnModuleInit {
    * T9 提现拦截：存在 pending，或已审核通过但还未落库的改绑申请。
    * kind 省略时检查钱包与 X 两类。
    */
-  async hasPendingChange(userId: string, kind?: 'wallet' | 'x'): Promise<boolean> {
+  async hasPendingChange(
+    userId: string,
+    kind?: 'wallet' | 'x',
+    manager?: EntityManager,
+  ): Promise<boolean> {
     const where: FindOptionsWhere<BindingChange> = {
       userId,
       status: In(['pending', 'approved']),
       appliedAt: IsNull(),
     };
     if (kind) where.kind = kind;
-    return (await this.changes.count({ where })) > 0;
+    // 调用方已持有用户行锁时（提现/改绑事务内），用其事务管理器读，避免跨连接快照。
+    const repo = manager ? manager.getRepository(BindingChange) : this.changes;
+    return (await repo.count({ where })) > 0;
   }
 
   @Interval(BINDING_CHANGE_POLL_INTERVAL_MS)
