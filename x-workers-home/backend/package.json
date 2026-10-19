@@ -7,7 +7,8 @@
     "test": "jest",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "migration:generate": "typeorm-ts-node-commonjs migration:generate -d src/config/database.config.ts",
-    "migration:run": "typeorm-ts-node-commonjs migration:run -d src/config/database.config.ts"
+    "migration:run": "typeorm-ts-node-commonjs migration:run -d src/config/database.config.ts",
+    "seed:admin": "ts-node src/database/seed-admin.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.3.0",
@@ -52,6 +53,7 @@
     "moduleFileExtensions": ["js", "json", "ts"],
     "rootDir": ".",
     "testEnvironment": "node",
+    "setupFiles": ["<rootDir>/test/setup-e2e.ts"],
     "testRegex": ".*\\.(spec|e2e-spec)\\.ts$",
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
