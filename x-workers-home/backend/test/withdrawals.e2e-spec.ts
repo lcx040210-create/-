@@ -12,6 +12,7 @@ import { AppModule } from '../src/app.module';
 import { BindingChange } from '../src/bindings/binding-change.entity';
 import { configureApp } from '../src/bootstrap';
 import { MICRO } from '../src/common/money';
+import { PLATFORM_ACCOUNTS } from '../src/database/migrations/1700000003000-ledger';
 import { Account } from '../src/ledger/account.entity';
 import { LedgerEntry } from '../src/ledger/ledger-entry.entity';
 import { LedgerService } from '../src/ledger/ledger.service';
@@ -71,6 +72,13 @@ describe('提现 e2e（规则校验 + 立即冻结 + 人工审核流）', () => 
       .getRepository(Account)
       .findOneOrFail({ where: { ownerUserId: userId } });
     return { available: account.available, frozen: account.frozen };
+  }
+
+  async function incomeBalance(): Promise<bigint> {
+    const account = await ds
+      .getRepository(Account)
+      .findOneOrFail({ where: { id: PLATFORM_ACCOUNTS.income } });
+    return account.available;
   }
 
   /** 真库全账户总额：Σ(available + frozen) */
@@ -362,7 +370,7 @@ describe('提现 e2e（规则校验 + 立即冻结 + 人工审核流）', () => 
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 
-  it('approve + markPaid：冻结出系统（−amount）、冻结清零、tx_hash 落库、重复打款 400', async () => {
+  it('approve + markPaid：实付出系统（−payout）、手续费入平台收入、冻结清零、tx_hash 落库、重复打款 400', async () => {
     const user = await makeUser();
     const admin = await makeUser(undefined, 'admin');
     await fund(user.id, 100n * XM);
@@ -388,6 +396,7 @@ describe('提现 e2e（规则校验 + 立即冻结 + 人工审核流）', () => 
     ).rejects.toBeInstanceOf(NotFoundException);
 
     const totalBefore = await sumAll();
+    const incomeBefore = await incomeBalance();
     const txHash = `0x${randomUUID().replace(/-/g, '')}`;
     const paid = await withdrawals.markPaid(created.body.id, txHash, admin.id);
     expect(paid).toMatchObject({
@@ -397,29 +406,47 @@ describe('提现 e2e（规则校验 + 立即冻结 + 人工审核流）', () => 
     });
     expect(paid.reviewedBy).toBe(admin.id);
 
-    // consumeFrozen(amount)：该笔 50 XM 整体离开系统（45 实付 + 5 手续费），
-    // 用户侧冻结清零（“系统总额减 payout”按对账口径由 T18 拆分手续费）。
-    expect(await sumAll()).toBe(totalBefore - 50n * XM);
+    // 记账拆分：45 实付出系统（系统总额 −payout），5 手续费转入 platform_income；
+    // 用户侧冻结清零、可用余额不变。
+    expect(await sumAll()).toBe(totalBefore - 45n * XM);
+    expect(await incomeBalance()).toBe(incomeBefore + 5n * XM);
     expect(await balancesOf(user.id)).toEqual({
       available: 50n * XM,
       frozen: 0n,
     });
 
-    const paidEntry = (await entriesOf(created.body.id)).find(
-      (e) => e.kind === 'withdrawal_paid',
-    );
+    const entries = await entriesOf(created.body.id);
+    const paidEntry = entries.find((e) => e.kind === 'withdrawal_paid');
     expect(paidEntry).toMatchObject({
       availableDelta: 0n,
-      frozenDelta: -50n * XM,
+      frozenDelta: -45n * XM,
       availableAfter: 50n * XM,
-      frozenAfter: 0n,
+      frozenAfter: 5n * XM,
+    });
+
+    // 手续费：冻结 → 可用（unfreeze）→ platform_income（transfer），共 3 行
+    const feeEntries = entries.filter((e) => e.kind === 'withdrawal_fee');
+    expect(feeEntries).toHaveLength(3);
+    const userFeeEntries = feeEntries.filter((e) => e.userId === user.id);
+    expect(userFeeEntries).toHaveLength(2);
+    expect(userFeeEntries.map((e) => [e.availableDelta, e.frozenDelta])).toEqual(
+      expect.arrayContaining([
+        [5n * XM, -5n * XM],
+        [-5n * XM, 0n],
+      ]),
+    );
+    const incomeFeeEntry = feeEntries.find((e) => e.userId === null);
+    expect(incomeFeeEntry).toMatchObject({
+      availableDelta: 5n * XM,
+      frozenDelta: 0n,
     });
 
     // 重复打款 → 400，且不重复出账
     await expect(
       withdrawals.markPaid(created.body.id, txHash, admin.id),
     ).rejects.toBeInstanceOf(BadRequestException);
-    expect(await sumAll()).toBe(totalBefore - 50n * XM);
+    expect(await sumAll()).toBe(totalBefore - 45n * XM);
+    expect(await incomeBalance()).toBe(incomeBefore + 5n * XM);
 
     // 有 paid 记录后 isFirst 翻为 false
     const mine = await request(server())

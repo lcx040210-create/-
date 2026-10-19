@@ -186,10 +186,25 @@ export class WithdrawalsService {
         throw new BadRequestException('只有已审核通过的提现可以打款');
       }
 
+      // 记账拆分：实付部分出系统；手续费先从冻结退回可用，再转入平台收入。
+      // 手续费同事务先入 income，再做返佣（≤ 40%×fee）→ 结构上不可能余额不足。
       await this.ledger.consumeFrozen(tx, {
         userId: locked.userId,
-        amountMicro: locked.amountMicro,
+        amountMicro: locked.payoutMicro,
         kind: 'withdrawal_paid',
+        ref: { type: 'withdrawal', id: locked.id },
+      });
+      await this.ledger.unfreeze(tx, {
+        userId: locked.userId,
+        amountMicro: locked.feeMicro,
+        kind: 'withdrawal_fee',
+        ref: { type: 'withdrawal', id: locked.id },
+      });
+      await this.ledger.transfer(tx, {
+        from: { userId: locked.userId },
+        to: { platform: 'income' },
+        amountMicro: locked.feeMicro,
+        kind: 'withdrawal_fee',
         ref: { type: 'withdrawal', id: locked.id },
       });
 

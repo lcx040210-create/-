@@ -17,6 +17,7 @@ export type LedgerKind =
   | 'withdrawal_hold'
   | 'withdrawal_reject'
   | 'withdrawal_paid'
+  | 'withdrawal_fee'
   | 'referral_rebate'
   | 'forfeit'
   | 'deletion_clawback';

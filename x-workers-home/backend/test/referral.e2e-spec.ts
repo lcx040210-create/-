@@ -81,11 +81,11 @@ describe('邀请返佣 e2e（20/30/40 档位 + 手续费钩子）', () => {
     return account.available;
   }
 
-  /** 返佣来源为 platform_income；测试前给它备足余额。 */
-  async function fundIncome(amountMicro: bigint): Promise<void> {
+  /** 清零平台收入账户：验证「income 从 0 起步」也不依赖预充值。 */
+  async function resetIncome(): Promise<void> {
     await ds.query(
-      `UPDATE "accounts" SET "available" = "available" + $1 WHERE "id" = $2`,
-      [amountMicro.toString(), PLATFORM_ACCOUNTS.income],
+      `UPDATE "accounts" SET "available" = 0 WHERE "id" = $1`,
+      [PLATFORM_ACCOUNTS.income],
     );
   }
 
@@ -98,6 +98,32 @@ describe('邀请返佣 e2e（20/30/40 档位 + 手续费钩子）', () => {
         ref: { type: 'deposit', id: randomUUID() },
       }),
     );
+  }
+
+  /**
+   * 模拟真实手续费链路：被邀人付费 → platform_income，同一事务内触发返佣。
+   * 返佣 ≤ 40% 手续费 → income 先入后出，结构上不可能余额不足。
+   */
+  async function payFeeAndRebate(
+    feePayer: User,
+    feeMicro: bigint,
+    feeKind: string,
+  ): Promise<void> {
+    await fund(feePayer.id, feeMicro);
+    await ds.transaction(async (tx) => {
+      await ledger.transfer(tx, {
+        from: { userId: feePayer.id },
+        to: { platform: 'income' },
+        amountMicro: feeMicro,
+        kind: feeKind === 'withdrawal' ? 'withdrawal_fee' : 'completion_fee',
+        ref: { type: 'user', id: feePayer.id },
+      });
+      await referral.onFeeEvent(tx, {
+        userId: feePayer.id,
+        feeMicro,
+        feeKind,
+      });
+    });
   }
 
   async function signToken(user: User): Promise<string> {
@@ -156,7 +182,7 @@ describe('邀请返佣 e2e（20/30/40 档位 + 手续费钩子）', () => {
     withdrawals = app.get(WithdrawalsService);
     jwt = app.get(JwtService);
 
-    await fundIncome(10_000n * XM);
+    await resetIncome();
   });
 
   afterAll(async () => {
@@ -205,13 +231,7 @@ describe('邀请返佣 e2e（20/30/40 档位 + 手续费钩子）', () => {
 
       const before = await availableOf(referrer.id);
       const feeMicro = 100n * XM;
-      await ds.transaction((tx) =>
-        referral.onFeeEvent(tx, {
-          userId: feePayer!.id,
-          feeMicro,
-          feeKind: 'completion',
-        }),
-      );
+      await payFeeAndRebate(feePayer!, feeMicro, 'completion');
 
       expect(await availableOf(referrer.id)).toBe(before + BigInt(rate) * XM);
       const entries = await rebateEntriesOf(referrer.id);
@@ -227,23 +247,21 @@ describe('邀请返佣 e2e（20/30/40 档位 + 手续费钩子）', () => {
     }
   });
 
-  it('5 XM 手续费 → 20% 档返 1 XM（直接调 onFeeEvent）', async () => {
+  it('5 XM 手续费 → 20% 档返 1 XM；income 从 0 起步也不失败', async () => {
+    await resetIncome();
+    expect(await incomeAvailable()).toBe(0n);
+
     const referrer = await makeUser();
     const invitee = await bindRow(referrer, 'active');
 
     const referrerBefore = await availableOf(referrer.id);
-    const incomeBefore = await incomeAvailable();
 
-    await ds.transaction((tx) =>
-      referral.onFeeEvent(tx, {
-        userId: invitee.id,
-        feeMicro: 5n * XM,
-        feeKind: 'completion',
-      }),
-    );
+    // 同一事务：5 XM 手续费先入 income，再按 20% 发 1 XM 返佣（自供资）
+    await payFeeAndRebate(invitee, 5n * XM, 'completion');
 
     expect(await availableOf(referrer.id)).toBe(referrerBefore + 1n * XM);
-    expect(await incomeAvailable()).toBe(incomeBefore - 1n * XM);
+    // 平台净收 = 5 − 1 = 4 XM
+    expect(await incomeAvailable()).toBe(4n * XM);
     const entries = await rebateEntriesOf(referrer.id);
     expect(entries).toEqual([
       expect.objectContaining({
@@ -319,7 +337,11 @@ describe('邀请返佣 e2e（20/30/40 档位 + 手续费钩子）', () => {
     ).toBe(0);
   });
 
-  it('被邀人提现 markPaid → 提现费 5 XM 产生 1 XM 返佣', async () => {
+  it('被邀人提现 markPaid → 提现费 5 XM 产生 1 XM 返佣（income 从 0 起步）', async () => {
+    // income 清空：打款流程自身把手续费入账，再发返佣，不依赖任何预充值
+    await resetIncome();
+    expect(await incomeAvailable()).toBe(0n);
+
     const referrer = await makeUser();
     const invitee = await bindRow(referrer, 'active');
     const admin = await makeUser();
@@ -332,14 +354,13 @@ describe('邀请返佣 e2e（20/30/40 档位 + 手续费钩子）', () => {
     await withdrawals.approve(created.body.id, admin.id);
 
     const referrerBefore = await availableOf(referrer.id);
-    const incomeBefore = await incomeAvailable();
     const txHash = `0x${randomUUID().replace(/-/g, '')}`;
     const paid = await withdrawals.markPaid(created.body.id, txHash, admin.id);
     expect(paid).toMatchObject({ id: created.body.id, status: 'paid', txHash });
 
-    // 5 XM 提现费 × 20% = 1 XM
+    // 提现费 5 XM 先入 income，再按 20% 返 1 XM → 平台净收 4 XM
+    expect(await incomeAvailable()).toBe(4n * XM);
     expect(await availableOf(referrer.id)).toBe(referrerBefore + 1n * XM);
-    expect(await incomeAvailable()).toBe(incomeBefore - 1n * XM);
     const entries = await rebateEntriesOf(referrer.id);
     expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({
@@ -371,16 +392,18 @@ describe('邀请返佣 e2e（20/30/40 档位 + 手续费钩子）', () => {
       }),
     ).toBe(0);
 
-    // 无邀请人的真实提现打款流程照常完成
+    // 无邀请人的真实提现打款流程照常完成；手续费仍入 platform_income
     const admin = await makeUser();
     await fund(user.id, 50n * XM);
     const token = await signToken(user);
     const created = await requestWithdrawal(token, '50').expect(201);
     await withdrawals.approve(created.body.id, admin.id);
+    const incomeBefore = await incomeAvailable();
     const txHash = `0x${randomUUID().replace(/-/g, '')}`;
     await expect(
       withdrawals.markPaid(created.body.id, txHash, admin.id),
     ).resolves.toMatchObject({ status: 'paid' });
+    expect(await incomeAvailable()).toBe(incomeBefore + 5n * XM);
     expect(
       await ds.getRepository(LedgerEntry).count({
         where: { kind: 'referral_rebate', refType: 'user', refId: user.id },
@@ -398,13 +421,7 @@ describe('邀请返佣 e2e（20/30/40 档位 + 手续费钩子）', () => {
     await bindRow(referrer, 'pending_x_binding'); // 非 active 不计
 
     // 5 名 active 被邀人 → 30%；100 XM × 30% = 30 XM
-    await ds.transaction((tx) =>
-      referral.onFeeEvent(tx, {
-        userId: feePayer!.id,
-        feeMicro: 100n * XM,
-        feeKind: 'completion',
-      }),
-    );
+    await payFeeAndRebate(feePayer!, 100n * XM, 'completion');
 
     await request(server()).get('/api/referral/mine').expect(401);
 
