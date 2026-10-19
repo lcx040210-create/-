@@ -12,6 +12,7 @@ import { OrdersModule } from './orders/orders.module';
 import { RatingsModule } from './ratings/ratings.module';
 import { ReferralModule } from './referral/referral.module';
 import { SlotsModule } from './slots/slots.module';
+import { VerificationModule } from './verification/verification.module';
 import { WithdrawalsModule } from './withdrawals/withdrawals.module';
 
 @Module({
@@ -30,6 +31,7 @@ import { WithdrawalsModule } from './withdrawals/withdrawals.module';
     RatingsModule,
     ReferralModule,
     SlotsModule,
+    VerificationModule,
     WithdrawalsModule,
   ],
   controllers: [HealthController],

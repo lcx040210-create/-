@@ -28,7 +28,10 @@ import { Order } from '../orders/order.entity';
 import { ORDER_FEE_DEN, ORDER_FEE_NUM } from '../orders/orders.service';
 import { ReferralService } from '../referral/referral.service';
 import { User } from '../users/user.entity';
+import { canonicalizeDeliveryUrl } from './delivery-url';
 import { OrderSlot, OrderSlotStatus } from './order-slot.entity';
+
+export { canonicalizeDeliveryUrl } from './delivery-url';
 
 /** 接单后的交付窗口：3 小时。 */
 export const DELIVERY_WINDOW_MS = 3 * 60 * 60 * 1000;
@@ -73,32 +76,6 @@ function isUniqueViolation(err: unknown): boolean {
   return (
     candidate?.code === '23505' || candidate?.driverError?.code === '23505'
   );
-}
-
-/** x.com / twitter.com 及其 www/mobile/m 变体。 */
-const TWEET_HOST_PATTERN = /^(?:www\.|mobile\.|m\.)?(?:x|twitter)\.com$/;
-
-/**
- * 交付链接规范化：x/twitter 链接统一为 `https://x.com/<小写路径>`，
- * 去掉末尾斜杠、查询串与锚点，避免同一推文用 twitter.com / 尾斜杠 / 追踪参数
- * 等变体绕过唯一约束。其他站点保持用户输入（仅 trim）。
- */
-export function canonicalizeDeliveryUrl(raw: string): string {
-  const trimmed = raw.trim();
-  let parsed: URL;
-  try {
-    parsed = new URL(trimmed);
-  } catch {
-    throw new BadRequestException('交付链接不合法');
-  }
-
-  const host = parsed.hostname.toLowerCase();
-  if (!TWEET_HOST_PATTERN.test(host)) {
-    return trimmed;
-  }
-
-  const path = parsed.pathname.toLowerCase().replace(/\/+$/, '') || '/';
-  return `https://x.com${path}`;
 }
 
 @Injectable()
