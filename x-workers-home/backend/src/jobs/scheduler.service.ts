@@ -6,8 +6,8 @@ import { VerificationJob } from './verification-job.entity';
 
 export const VERIFICATION_POLL_INTERVAL_MS = 30_000;
 
-/** 第 1/2/3 次失败后的退避；第 4 次失败直接进入 manual */
-export const JOB_BACKOFF_MS = [60_000, 180_000, 600_000, 1_800_000];
+/** 三次重试间隔（第 1/2/3 次失败后）；第 4 次尝试失败直接进入 manual */
+export const JOB_BACKOFF_MS = [60_000, 180_000, 600_000];
 export const MAX_JOB_ATTEMPTS = 4;
 
 /**

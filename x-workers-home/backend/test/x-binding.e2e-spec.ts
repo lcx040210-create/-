@@ -211,12 +211,12 @@ describe('X binding + scheduler + notifications + binding changes (e2e)', () => 
     job = await jobFor(userId);
     expect(job!.attempts).toBe(1);
 
-    // 到期后第二次执行
+    // 到期后第二次执行：第二次失败按 3m 退避（1m/3m/10m 三档，第 4 次失败进 manual）
     await scheduler.tick(new Date(firstNext + 1));
     job = await jobFor(userId);
     expect(job!.status).toBe('pending');
     expect(job!.attempts).toBe(2);
-    expect(job!.nextRunAt.getTime()).toBeGreaterThan(firstNext);
+    expect(job!.nextRunAt.getTime()).toBeGreaterThanOrEqual(firstNext + 1 + 180_000 - 10);
 
     expect((await bindingStatus(token)).status).toBe('pending');
   });
@@ -255,6 +255,28 @@ describe('X binding + scheduler + notifications + binding changes (e2e)', () => 
     const list = await notifications(token);
     expect(list.items).toHaveLength(1);
     expect(list.items[0]).toMatchObject({ kind: 'x_binding_failed' });
+  });
+
+  it('suspended 用户 start 被拒；封禁前发起的绑定激活后仍保持 suspended', async () => {
+    // 入口拒绝 suspended 用户
+    const banned = await registerUser();
+    await ds.getRepository(User).update({ id: banned.userId }, { status: 'suspended' });
+    await request(server())
+      .post('/api/bindings/x/start')
+      .set(auth(banned.token))
+      .send({ handle: uniqueHandle('ban') })
+      .expect(403);
+
+    // 验证期间被封禁：绑定可以完成，但激活不得覆盖 suspended
+    const user = await registerUser();
+    const handle = uniqueHandle('late');
+    const started = await startBinding(user.token, handle);
+    await ds.getRepository(User).update({ id: user.userId }, { status: 'suspended' });
+    await bindWithBio(user.token, handle, started.code);
+
+    expect(await bindingStatus(user.token)).toEqual({ status: 'active', handle });
+    const row = await ds.getRepository(User).findOneOrFail({ where: { id: user.userId } });
+    expect(row.status).toBe('suspended');
   });
 
   it('handle 已被别的账号绑定 → 409', async () => {

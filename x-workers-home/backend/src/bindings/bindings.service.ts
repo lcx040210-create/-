@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   OnModuleInit,
   UnauthorizedException,
@@ -98,6 +99,14 @@ export class BindingsService implements OnModuleInit {
 
   async start(userId: string, rawHandle: string) {
     const handle = normalizeXHandle(rawHandle);
+
+    const user = await this.users.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new UnauthorizedException('用户不存在');
+    }
+    if (user.status === 'suspended') {
+      throw new ForbiddenException('账号已被封禁，无法绑定 X');
+    }
 
     const existing = await this.xBindings.findOne({ where: { userId } });
     const taken = await this.xBindings.findOne({ where: { handle } });
@@ -413,8 +422,12 @@ export class BindingsService implements OnModuleInit {
       binding.verifiedAt = new Date();
       await repo.save(binding);
 
-      // 登录身份即钱包，X 验证通过即双绑齐
-      await tx.getRepository(User).update({ id: userId }, { status: 'active' });
+      // 登录身份即钱包，X 验证通过即双绑齐。
+      // 只从 pending_x_binding 提升，绝不覆盖 suspended（封禁中仍可能走到这里）
+      await tx.getRepository(User).update(
+        { id: userId, status: 'pending_x_binding' },
+        { status: 'active' },
+      );
 
       await this.notifications.notify(tx, {
         userId,
