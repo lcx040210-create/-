@@ -20,6 +20,7 @@ import { AdminAction } from './admin-action.entity';
 import { AdminAuthController } from './admin-auth.controller';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
+import { ReconciliationService } from './reconciliation.service';
 
 @Module({
   imports: [
@@ -44,7 +45,7 @@ import { AdminService } from './admin.service';
     DisputesModule,
   ],
   controllers: [AdminAuthController, AdminController],
-  providers: [AdminService],
+  providers: [AdminService, ReconciliationService],
   exports: [AdminService],
 })
 export class AdminModule {}

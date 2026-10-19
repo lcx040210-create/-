@@ -27,6 +27,8 @@ export interface ChainTransfer {
 export interface ChainProvider {
   getLatestBlock(): Promise<number>;
   getUsdtTransfers(p: GetUsdtTransfersParams): Promise<ChainTransfer[]>;
+  /** USDT(BEP20) balanceOf(address)，原始 wei 整数的十进制字符串。 */
+  getUsdtBalance(address: string): Promise<string>;
 }
 
 /** DI token：DepositsModule 默认绑定 BscChainProvider，测试覆盖为 Fake。 */

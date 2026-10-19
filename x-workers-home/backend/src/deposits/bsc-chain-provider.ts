@@ -7,7 +7,10 @@ import {
   GetUsdtTransfersParams,
 } from './chain-provider';
 
-const USDT_ABI = ['event Transfer(address indexed from, address indexed to, uint256 value)'];
+const USDT_ABI = [
+  'event Transfer(address indexed from, address indexed to, uint256 value)',
+  'function balanceOf(address owner) view returns (uint256)',
+];
 
 @Injectable()
 export class BscChainProvider implements ChainProvider {
@@ -49,5 +52,10 @@ export class BscChainProvider implements ChainProvider {
       });
     }
     return transfers;
+  }
+
+  async getUsdtBalance(address: string): Promise<string> {
+    const balance: bigint = await this.usdt.balanceOf(address);
+    return balance.toString();
   }
 }

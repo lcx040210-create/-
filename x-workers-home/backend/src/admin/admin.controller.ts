@@ -12,6 +12,7 @@ import {
 import { AuthUser, CurrentUser } from '../common/decorators/current-user.decorator';
 import { AdminGuard } from '../common/guards/admin.guard';
 import { AdminService } from './admin.service';
+import { ReconciliationService } from './reconciliation.service';
 import {
   AdminBindingChangeListDto,
   AdminBindingChangeRejectDto,
@@ -32,7 +33,16 @@ import {
 @Controller('admin')
 @UseGuards(AdminGuard)
 export class AdminController {
-  constructor(private readonly admin: AdminService) {}
+  constructor(
+    private readonly admin: AdminService,
+    private readonly reconciliation: ReconciliationService,
+  ) {}
+
+  // ---- 对账 ----
+  @Get('reconciliation')
+  reconciliationSnapshot() {
+    return this.reconciliation.inspect();
+  }
 
   // ---- 提现审核 ----
   @Get('withdrawals')

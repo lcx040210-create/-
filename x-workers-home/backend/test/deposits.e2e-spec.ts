@@ -41,6 +41,10 @@ class FakeChainProvider implements ChainProvider {
     return this.latestBlock;
   }
 
+  async getUsdtBalance(_address: string): Promise<string> {
+    return '0';
+  }
+
   async getUsdtTransfers(p: GetUsdtTransfersParams): Promise<ChainTransfer[]> {
     this.queries.push({ ...p });
     if (this.transfersError) throw this.transfersError;
