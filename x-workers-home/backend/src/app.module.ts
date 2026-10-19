@@ -11,6 +11,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { OrdersModule } from './orders/orders.module';
 import { RatingsModule } from './ratings/ratings.module';
 import { ReferralModule } from './referral/referral.module';
+import { SettlementModule } from './settlement/settlement.module';
 import { SlotsModule } from './slots/slots.module';
 import { VerificationModule } from './verification/verification.module';
 import { WithdrawalsModule } from './withdrawals/withdrawals.module';
@@ -30,6 +31,7 @@ import { WithdrawalsModule } from './withdrawals/withdrawals.module';
     OrdersModule,
     RatingsModule,
     ReferralModule,
+    SettlementModule,
     SlotsModule,
     VerificationModule,
     WithdrawalsModule,

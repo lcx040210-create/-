@@ -235,45 +235,80 @@ export class OrdersService {
         throw new BadRequestException('只有招募中的商单可以下架');
       }
 
-      const slotRepo = tx.getRepository(OrderSlot);
-      const taken = await slotRepo.count({
-        where: { orderId: id, status: Not('expired') },
-      });
-      const held = await slotRepo.count({
-        where: { orderId: id, status: In([...ESCROW_HELD_SLOT_STATUSES]) },
-      });
-      const freeSlots = order.slotsTotal - taken;
-
-      // 退款 = 托管 − 活跃名额仍占用的 P；等价于「自由池 × P + 未赚的 fee」。
-      const refundMicro = order.escrowMicro - order.priceMicro * BigInt(held);
-      const expectedRefund =
-        order.priceMicro * BigInt(freeSlots) + (order.feeEarned ? 0n : order.feeMicro);
-      // DB 无 CHECK：这里断言订单托管账未被破坏。
-      if (
-        refundMicro < 0n ||
-        refundMicro > order.escrowMicro ||
-        refundMicro !== expectedRefund
-      ) {
-        throw new InternalServerErrorException('托管不变量异常：下架退款额越界');
-      }
-
-      if (refundMicro > 0n) {
-        await this.ledger.transfer(tx, {
-          from: { platform: 'escrow' },
-          to: { userId },
-          amountMicro: refundMicro,
-          kind: 'order_refund',
-          ref: { type: 'order', id: order.id },
-        });
-      }
-
-      order.escrowMicro -= refundMicro;
-      order.status = 'closed';
-      order.closedAt = new Date();
-      return { order: await repo.save(order), taken };
+      const taken = await this.refundFreePoolAndClose(tx, order);
+      return { order, taken };
     });
 
     return this.toView(order, await this.userGrade(userId), false, taken);
+  }
+
+  /**
+   * 到期关闭（T14 cron 调用）：锁订单行后复核 `recruiting` 且 `expires_at <= now`，
+   * 与商家主动下架共用同一退款逻辑。返回是否真正关闭（幂等，重复扫描返回 false）。
+   */
+  async closeExpired(id: string, now: Date = new Date()): Promise<boolean> {
+    return this.dataSource.transaction(async (tx) => {
+      const repo = tx.getRepository(Order);
+      const order = await repo.findOne({
+        where: { id },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (
+        !order ||
+        order.status !== 'recruiting' ||
+        order.expiresAt.getTime() > now.getTime()
+      ) {
+        return false;
+      }
+
+      await this.refundFreePoolAndClose(tx, order);
+      return true;
+    });
+  }
+
+  /**
+   * 关闭退款（close / closeExpired 共用）：只退自由池 + 未赚的 fee。
+   * 调用方必须已锁订单行并在同一事务内调用；本方法负责保存订单。
+   * 返回成交名额数（非 expired），供视图计算剩余名额。
+   */
+  private async refundFreePoolAndClose(tx: EntityManager, order: Order): Promise<number> {
+    const slotRepo = tx.getRepository(OrderSlot);
+    const taken = await slotRepo.count({
+      where: { orderId: order.id, status: Not('expired') },
+    });
+    const held = await slotRepo.count({
+      where: { orderId: order.id, status: In([...ESCROW_HELD_SLOT_STATUSES]) },
+    });
+    const freeSlots = order.slotsTotal - taken;
+
+    // 退款 = 托管 − 活跃名额仍占用的 P；等价于「自由池 × P + 未赚的 fee」。
+    const refundMicro = order.escrowMicro - order.priceMicro * BigInt(held);
+    const expectedRefund =
+      order.priceMicro * BigInt(freeSlots) + (order.feeEarned ? 0n : order.feeMicro);
+    // DB 无 CHECK：这里断言订单托管账未被破坏。
+    if (
+      refundMicro < 0n ||
+      refundMicro > order.escrowMicro ||
+      refundMicro !== expectedRefund
+    ) {
+      throw new InternalServerErrorException('托管不变量异常：下架退款额越界');
+    }
+
+    if (refundMicro > 0n) {
+      await this.ledger.transfer(tx, {
+        from: { platform: 'escrow' },
+        to: { userId: order.merchantUserId },
+        amountMicro: refundMicro,
+        kind: 'order_refund',
+        ref: { type: 'order', id: order.id },
+      });
+    }
+
+    order.escrowMicro -= refundMicro;
+    order.status = 'closed';
+    order.closedAt = new Date();
+    await tx.getRepository(Order).save(order);
+    return taken;
   }
 
   /** 批量统计各订单的非 expired 名额数（自由池计算）。 */
