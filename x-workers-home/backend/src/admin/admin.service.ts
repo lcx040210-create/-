@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -65,6 +66,8 @@ function uniqueIds(ids: string[]): string[] {
  */
 @Injectable()
 export class AdminService {
+  private readonly logger = new Logger(AdminService.name);
+
   constructor(
     @InjectRepository(User) private readonly users: Repository<User>,
     @InjectRepository(Withdrawal)
@@ -209,39 +212,69 @@ export class AdminService {
   }
 
   async approveWithdrawal(id: string, adminId: string) {
-    const view = await this.withdrawalsService.approve(id, adminId);
-    await this.audit(null, {
+    const summary = { withdrawalId: id };
+    const auditId = await this.startIntentAudit({
       adminUserId: adminId,
       action: 'withdrawal_approve',
       targetType: 'withdrawal',
       targetId: id,
-      detail: { address: view.address, amountXm: view.amountXm },
+      detail: summary,
     });
-    return view;
+    try {
+      const view = await this.withdrawalsService.approve(id, adminId);
+      await this.finishIntentAudit(auditId, {
+        ...summary,
+        address: view.address,
+        amountXm: view.amountXm,
+        status: view.status,
+      });
+      return view;
+    } catch (err) {
+      await this.failIntentAudit(auditId, summary, err);
+      throw err;
+    }
   }
 
   async markWithdrawalPaid(id: string, txHash: string, adminId: string) {
-    const view = await this.withdrawalsService.markPaid(id, txHash, adminId);
-    await this.audit(null, {
+    const summary = { withdrawalId: id, txHash };
+    const auditId = await this.startIntentAudit({
       adminUserId: adminId,
       action: 'withdrawal_paid',
       targetType: 'withdrawal',
       targetId: id,
-      detail: { txHash, payoutXm: view.payoutXm },
+      detail: summary,
     });
-    return view;
+    try {
+      const view = await this.withdrawalsService.markPaid(id, txHash, adminId);
+      await this.finishIntentAudit(auditId, {
+        ...summary,
+        payoutXm: view.payoutXm,
+        status: view.status,
+      });
+      return view;
+    } catch (err) {
+      await this.failIntentAudit(auditId, summary, err);
+      throw err;
+    }
   }
 
   async rejectWithdrawal(id: string, reason: string, adminId: string) {
-    const view = await this.withdrawalsService.reject(id, reason, adminId);
-    await this.audit(null, {
+    const summary = { withdrawalId: id, reason };
+    const auditId = await this.startIntentAudit({
       adminUserId: adminId,
       action: 'withdrawal_reject',
       targetType: 'withdrawal',
       targetId: id,
-      detail: { reason },
+      detail: summary,
     });
-    return view;
+    try {
+      const view = await this.withdrawalsService.reject(id, reason, adminId);
+      await this.finishIntentAudit(auditId, { ...summary, status: view.status });
+      return view;
+    } catch (err) {
+      await this.failIntentAudit(auditId, summary, err);
+      throw err;
+    }
   }
 
   // ---------------------------------------------------------------------
@@ -276,15 +309,30 @@ export class AdminService {
       throw new BadRequestException('请提供 userAddress 或 userId');
     }
 
-    const view = await this.depositsService.claimTo(depositId, userId);
-    await this.audit(null, {
+    const summary = {
+      depositId,
+      userId,
+      userAddress: dto.userAddress ?? null,
+    };
+    const auditId = await this.startIntentAudit({
       adminUserId: adminId,
       action: 'deposit_claim',
       targetType: 'deposit',
       targetId: depositId,
-      detail: { userId, amountMicro: view.amountMicro },
+      detail: summary,
     });
-    return view;
+    try {
+      const view = await this.depositsService.claimTo(depositId, userId);
+      await this.finishIntentAudit(auditId, {
+        ...summary,
+        amountMicro: view.amountMicro,
+        status: view.status,
+      });
+      return view;
+    } catch (err) {
+      await this.failIntentAudit(auditId, summary, err);
+      throw err;
+    }
   }
 
   // ---------------------------------------------------------------------
@@ -347,63 +395,74 @@ export class AdminService {
       throw new NotFoundException('名额不存在');
     }
 
-    let result: { id: string; status: any; confirmedDeadlineAt: Date | null };
-
-    if (slot.status === 'verifying') {
-      result = await this.verification.adminResolveDelivery(slotId, pass, adminId);
-    } else if (slot.status === 'reserved' && slot.appealRequested && slot.deliveredAt) {
-      if (pass) {
-        await this.dataSource.transaction(async (tx) => {
-          const repo = tx.getRepository(OrderSlot);
-          const locked = await repo.findOne({
-            where: { id: slotId },
-            lock: { mode: 'pessimistic_write' },
-          });
-          if (!locked || locked.status !== 'reserved' || !locked.deliveredAt) {
-            throw new BadRequestException('当前名额状态不可人工裁决');
-          }
-          locked.status = 'verifying';
-          await repo.save(locked);
-        });
-        result = await this.verification.adminResolveDelivery(slotId, true, adminId);
-      } else {
-        await this.dataSource.transaction(async (tx) => {
-          const repo = tx.getRepository(OrderSlot);
-          const locked = await repo.findOne({
-            where: { id: slotId },
-            lock: { mode: 'pessimistic_write' },
-          });
-          if (!locked || locked.status !== 'reserved') {
-            throw new BadRequestException('当前名额状态不可人工裁决');
-          }
-          locked.lastReject = {
-            reasons: [MANUAL_REJECT_REASON],
-            at: new Date().toISOString(),
-            adminId,
-          };
-          locked.appealRequested = false;
-          locked.manualReasons = [];
-          await repo.save(locked);
-        });
-        result = { id: slotId, status: 'reserved', confirmedDeadlineAt: null };
-      }
-    } else {
-      // 非人工可裁决状态：交给 T13 服务抛出精确的 400。
-      result = await this.verification.adminResolveDelivery(slotId, pass, adminId);
-    }
-
-    await this.slots.update(
-      { id: slotId },
-      { appealRequested: false, manualReasons: [] },
-    );
-    await this.audit(null, {
+    const summary = { slotId, pass };
+    const auditId = await this.startIntentAudit({
       adminUserId: adminId,
       action: 'slot_resolve_delivery',
       targetType: 'slot',
       targetId: slotId,
-      detail: { pass, status: result.status },
+      detail: summary,
     });
-    return result;
+
+    try {
+      let result: { id: string; status: any; confirmedDeadlineAt: Date | null };
+
+      if (slot.status === 'verifying') {
+        result = await this.verification.adminResolveDelivery(slotId, pass, adminId);
+      } else if (slot.status === 'reserved' && slot.appealRequested && slot.deliveredAt) {
+        if (pass) {
+          await this.dataSource.transaction(async (tx) => {
+            const repo = tx.getRepository(OrderSlot);
+            const locked = await repo.findOne({
+              where: { id: slotId },
+              lock: { mode: 'pessimistic_write' },
+            });
+            if (!locked || locked.status !== 'reserved' || !locked.deliveredAt) {
+              throw new BadRequestException('当前名额状态不可人工裁决');
+            }
+            locked.status = 'verifying';
+            await repo.save(locked);
+          });
+          result = await this.verification.adminResolveDelivery(slotId, true, adminId);
+        } else {
+          await this.dataSource.transaction(async (tx) => {
+            const repo = tx.getRepository(OrderSlot);
+            const locked = await repo.findOne({
+              where: { id: slotId },
+              lock: { mode: 'pessimistic_write' },
+            });
+            if (!locked || locked.status !== 'reserved') {
+              throw new BadRequestException('当前名额状态不可人工裁决');
+            }
+            locked.lastReject = {
+              reasons: [MANUAL_REJECT_REASON],
+              at: new Date().toISOString(),
+              adminId,
+            };
+            locked.appealRequested = false;
+            locked.manualReasons = [];
+            await repo.save(locked);
+          });
+          result = { id: slotId, status: 'reserved', confirmedDeadlineAt: null };
+        }
+      } else {
+        // 非人工可裁决状态：交给 T13 服务抛出精确的 400。
+        result = await this.verification.adminResolveDelivery(slotId, pass, adminId);
+      }
+
+      await this.slots.update(
+        { id: slotId },
+        { appealRequested: false, manualReasons: [] },
+      );
+      await this.finishIntentAudit(auditId, {
+        ...summary,
+        status: result.status,
+      });
+      return result;
+    } catch (err) {
+      await this.failIntentAudit(auditId, summary, err);
+      throw err;
+    }
   }
 
   async retryJob(jobId: string, adminId: string) {
@@ -508,15 +567,26 @@ export class AdminService {
     note: string | undefined,
     adminId: string,
   ) {
-    const dispute = await this.disputesService.resolve(id, ruling, adminId, note);
-    await this.audit(null, {
+    const summary = { disputeId: id, ruling, note: note ?? null };
+    const auditId = await this.startIntentAudit({
       adminUserId: adminId,
       action: 'dispute_resolve',
       targetType: 'dispute',
       targetId: id,
-      detail: { ruling, note: note ?? null, orderId: dispute.orderId },
+      detail: summary,
     });
-    return dispute;
+    try {
+      const dispute = await this.disputesService.resolve(id, ruling, adminId, note);
+      await this.finishIntentAudit(auditId, {
+        ...summary,
+        orderId: dispute.orderId,
+        status: dispute.status,
+      });
+      return dispute;
+    } catch (err) {
+      await this.failIntentAudit(auditId, summary, err);
+      throw err;
+    }
   }
 
   // ---------------------------------------------------------------------
@@ -1083,6 +1153,71 @@ export class AdminService {
         detail: input.detail ?? {},
       }),
     );
+  }
+
+  /**
+   * 先写「意向」审计行并提交，再调用自带事务的服务（T8/T9/T13/T15）。
+   * 即使后续审计更新失败，操作前已存在 intent=true 的行，不会出现
+   * 「钱/状态已动但没有任何审计记录」的空洞；对账可据此发现待确认操作。
+   */
+  private async startIntentAudit(input: {
+    adminUserId: string;
+    action: string;
+    targetType: string;
+    targetId: string;
+    detail?: Record<string, any>;
+  }): Promise<string> {
+    const saved = await this.actions.save(
+      this.actions.create({
+        adminUserId: input.adminUserId,
+        action: input.action,
+        targetType: input.targetType,
+        targetId: input.targetId,
+        detail: { intent: true, ...(input.detail ?? {}) },
+      }),
+    );
+    return saved.id;
+  }
+
+  /** 成功后把同一行改为 intent=false + 结果摘要（更新失败仅告警，不回滚已完成的业务动作）。 */
+  private async finishIntentAudit(
+    id: string,
+    detail: Record<string, any>,
+  ): Promise<void> {
+    try {
+      // 直接写 jsonb：TypeORM 的 QueryDeepPartialEntity 对 jsonb 列类型过窄。
+      await this.actions.query(
+        `UPDATE "admin_actions" SET "detail" = $1::jsonb WHERE "id" = $2`,
+        [JSON.stringify({ intent: false, ...detail }), id],
+      );
+    } catch (err) {
+      this.logger.warn(
+        `admin_actions ${id} 结果回写失败（意向行保留）：${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
+
+  /** 服务失败：意向行保留 intent=true 并记录失败原因（更新失败也无妨）。 */
+  private async failIntentAudit(
+    id: string,
+    detail: Record<string, any>,
+    error: unknown,
+  ): Promise<void> {
+    const message = error instanceof Error ? error.message : String(error);
+    try {
+      await this.actions.query(
+        `UPDATE "admin_actions" SET "detail" = $1::jsonb WHERE "id" = $2`,
+        [JSON.stringify({ intent: true, ...detail, error: message }), id],
+      );
+    } catch (err) {
+      this.logger.warn(
+        `admin_actions ${id} 失败原因回写失败：${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
   }
 
   private async slotAdminViews(rows: OrderSlot[]) {

@@ -439,7 +439,12 @@ describe('Admin e2e（登录/守卫、审核队列、抽查与罚则）', () => 
       .expect(200);
     expect(approved.body).toMatchObject({ id: withdrawalId, status: 'approved' });
     expect(approved.body.reviewedBy).toBe(admin.id);
-    expect(await adminActions('withdrawal_approve', withdrawalId)).toHaveLength(1);
+    const approveActions = await adminActions('withdrawal_approve', withdrawalId);
+    expect(approveActions).toHaveLength(1);
+    expect(approveActions[0].detail).toMatchObject({
+      intent: false,
+      status: 'approved',
+    });
 
     const txHash = `0x${randomUUID().replace(/-/g, '')}`;
     const paid = await request(server())
@@ -448,16 +453,36 @@ describe('Admin e2e（登录/守卫、审核队列、抽查与罚则）', () => 
       .send({ txHash })
       .expect(200);
     expect(paid.body).toMatchObject({ id: withdrawalId, status: 'paid', txHash });
-    expect(await adminActions('withdrawal_paid', withdrawalId)).toHaveLength(1);
+    const paidActions = await adminActions('withdrawal_paid', withdrawalId);
+    expect(paidActions).toHaveLength(1);
+    expect(paidActions[0].detail).toMatchObject({
+      intent: false,
+      status: 'paid',
+      txHash,
+    });
     expect(await availableOf(user.id)).toBe(250n * XM);
 
-    // 已 paid 再打款 → 400，不重复出账。
+    // 已 paid 再打款 → 400，不重复出账；失败的 admin 操作仍留 intent=true 审计。
     await request(server())
       .post(`/api/admin/withdrawals/${withdrawalId}/paid`)
       .set(auth(adminToken))
       .send({ txHash })
       .expect(400);
     expect(await availableOf(user.id)).toBe(250n * XM);
+
+    const paidActionsAfterFailure = await adminActions(
+      'withdrawal_paid',
+      withdrawalId,
+    );
+    expect(paidActionsAfterFailure).toHaveLength(2);
+    expect(
+      paidActionsAfterFailure.filter((row) => row.detail.intent === false),
+    ).toHaveLength(1);
+    const failedIntent = paidActionsAfterFailure.find(
+      (row) => row.detail.intent === true,
+    );
+    expect(failedIntent).toBeDefined();
+    expect(failedIntent.detail.error).toContain('只有已审核通过的提现可以打款');
 
     // 冷却期内不可再申请：把上一笔挪到 25h 前再发。
     await ds.query(
@@ -481,7 +506,13 @@ describe('Admin e2e（登录/守卫、审核队列、抽查与罚则）', () => 
       status: 'rejected',
       rejectReason: '地址风险',
     });
-    expect(await adminActions('withdrawal_reject', second.body.id)).toHaveLength(1);
+    const rejectActions = await adminActions('withdrawal_reject', second.body.id);
+    expect(rejectActions).toHaveLength(1);
+    expect(rejectActions[0].detail).toMatchObject({
+      intent: false,
+      status: 'rejected',
+      reason: '地址风险',
+    });
     expect(await availableOf(user.id)).toBe(250n * XM);
   });
 
@@ -524,7 +555,13 @@ describe('Admin e2e（登录/守卫、审核队列、抽查与罚则）', () => 
       amount: '50',
     });
     expect(await availableOf(user.id)).toBe(50n * XM);
-    expect(await adminActions('deposit_claim', deposit.id)).toHaveLength(1);
+    const claimActions = await adminActions('deposit_claim', deposit.id);
+    expect(claimActions).toHaveLength(1);
+    expect(claimActions[0].detail).toMatchObject({
+      intent: false,
+      status: 'credited',
+      userId: user.id,
+    });
 
     // 重复认领 → 400。
     await request(server())
@@ -633,7 +670,13 @@ describe('Admin e2e（登录/守卫、审核队列、抽查与罚则）', () => 
     expect(passedSlot.survivalOverride).toBe(true);
     expect(passedSlot.manualReasons).toEqual([]);
     expect(passedSlot.appealRequested).toBe(false);
-    expect(await adminActions('slot_resolve_delivery', slot1.id)).toHaveLength(1);
+    const resolveActions = await adminActions('slot_resolve_delivery', slot1.id);
+    expect(resolveActions).toHaveLength(1);
+    expect(resolveActions[0].detail).toMatchObject({
+      intent: false,
+      status: 'passed',
+      pass: true,
+    });
 
     // ---- 申诉放行：reserved+appeal → 人工通过 ----
     const appealResolved = await request(server())
@@ -646,6 +689,12 @@ describe('Admin e2e（登录/守卫、审核队列、抽查与罚则）', () => 
     expect(appealedSlot.survivalOverride).toBe(true);
     expect(appealedSlot.appealRequested).toBe(false);
     expect(appealedSlot.manualReasons).toEqual([]);
+    const appealActions = await adminActions('slot_resolve_delivery', slot2.id);
+    expect(appealActions).toHaveLength(1);
+    expect(appealActions[0].detail).toMatchObject({
+      intent: false,
+      status: 'passed',
+    });
 
     // ---- retry：重置 attempts / status / next_run_at / last_error ----
     const retried = await request(server())
@@ -716,14 +765,30 @@ describe('Admin e2e（登录/守卫、审核队列、抽查与罚则）', () => 
     });
     expect((await loadSlot(slot.id)).status).toBe('refunded');
     expect(await availableOf(merchant.id)).toBe(merchantBefore + 100n * XM);
-    expect(await adminActions('dispute_resolve', disputeId)).toHaveLength(1);
+    const resolveActions = await adminActions('dispute_resolve', disputeId);
+    expect(resolveActions).toHaveLength(1);
+    expect(resolveActions[0].detail).toMatchObject({
+      intent: false,
+      ruling: 'refund',
+      status: 'resolved_refund',
+    });
 
-    // 已结案重复裁决 → 400。
+    // 已结案重复裁决 → 400，但失败操作留下 intent=true 审计行。
     await request(server())
       .post(`/api/admin/disputes/${disputeId}/resolve`)
       .set(auth(adminToken))
       .send({ ruling: 'refund', note: '再来一次' })
       .expect(400);
+    const resolveActionsAfterFailure = await adminActions(
+      'dispute_resolve',
+      disputeId,
+    );
+    expect(resolveActionsAfterFailure).toHaveLength(2);
+    const failedResolveIntent = resolveActionsAfterFailure.find(
+      (row) => row.detail.intent === true,
+    );
+    expect(failedResolveIntent).toBeDefined();
+    expect(failedResolveIntent.detail.error).toContain('争议已结案');
 
     // all 也包含已结案。
     const all = await request(server())
