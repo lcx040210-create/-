@@ -4,6 +4,11 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { createHash, randomBytes, randomUUID } from 'crypto';
 import { verifyMessage } from 'ethers';
 import { Repository } from 'typeorm';
+import {
+  toApiBindingStatus,
+  XBinding,
+  XBindingApiStatus,
+} from '../bindings/x-binding.entity';
 import { User } from '../users/user.entity';
 import { AuthNonce } from './entities/auth-nonce.entity';
 import { RefreshToken } from './entities/refresh-token.entity';
@@ -19,6 +24,7 @@ export interface AuthUserView {
   status: string;
   role: string;
   rating_grade: string | null;
+  x_binding?: { status: XBindingApiStatus; handle: string | null };
 }
 
 export interface TokenPair {
@@ -52,6 +58,8 @@ export class AuthService {
     @InjectRepository(AuthNonce) private readonly nonces: Repository<AuthNonce>,
     @InjectRepository(RefreshToken)
     private readonly refreshTokens: Repository<RefreshToken>,
+    @InjectRepository(XBinding)
+    private readonly xBindings: Repository<XBinding>,
     private readonly jwt: JwtService,
   ) {}
 
@@ -139,7 +147,14 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedException('用户不存在');
     }
-    return toView(user);
+    const binding = await this.xBindings.findOne({ where: { userId } });
+    return {
+      ...toView(user),
+      x_binding: {
+        status: toApiBindingStatus(binding?.status),
+        handle: binding?.handle ?? null,
+      },
+    };
   }
 
   private async issueTokens(user: User): Promise<TokenPair> {
