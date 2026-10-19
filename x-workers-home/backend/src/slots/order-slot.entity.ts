@@ -57,6 +57,13 @@ export class OrderSlot {
   @Column({ name: 'delivery_url', type: 'text', nullable: true })
   deliveryUrl: string | null;
 
+  /**
+   * 从 delivery_url 提取的推文状态 id（T13 fix）。
+   * 部分唯一索引按 id 去重，拦截同一推文的 handle / i-web 两种 URL 形式。
+   */
+  @Column({ name: 'delivery_tweet_id', type: 'varchar', length: 32, nullable: true })
+  deliveryTweetId: string | null;
+
   /** 最近一次核验驳回（T13 写入）：{ reasons, snapshot, at }。 */
   @Column({ name: 'last_reject', type: 'jsonb', nullable: true })
   lastReject: Record<string, any> | null;

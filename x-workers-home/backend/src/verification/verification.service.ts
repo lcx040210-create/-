@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { Interval } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, In, Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import { XBinding } from '../bindings/x-binding.entity';
 import { JobFatalError, SchedulerService } from '../jobs/scheduler.service';
 import { VerificationJob } from '../jobs/verification-job.entity';
@@ -200,8 +200,12 @@ export class VerificationService implements OnModuleInit {
   }
 
   /**
-   * 补偿扫描：verifying 名额若不存在 (pending/done/manual) 的 delivery 任务，
-   * 说明事务外入队失败或进程在入队前崩溃，重新入队。返回本次补入队数量。
+   * 补偿扫描：verifying 名额若不存在**当前交付轮次**的 (pending/done/manual)
+   * delivery 任务，说明事务外入队失败或进程在入队前崩溃，重新入队。
+   *
+   * 轮次判定：job.created_at >= slot.delivered_at。上一轮打回留下的 done job
+   * 不算覆盖，否则「打回 → 重交 → 入队失败」会让名额永久卡在 verifying。
+   * 返回本次补入队数量。
    */
   async sweepOrphanVerifying(): Promise<number> {
     const verifying = await this.slots.find({
@@ -211,15 +215,20 @@ export class VerificationService implements OnModuleInit {
     });
     if (verifying.length === 0) return 0;
 
-    const coveredJobs = await this.jobs.find({
-      where: {
-        type: DELIVERY_JOB_TYPE,
-        refId: In(verifying.map((slot) => slot.id)),
-        status: In(['pending', 'done', 'manual']),
-      },
-      select: ['refId'],
-    });
-    const covered = new Set(coveredJobs.map((job) => job.refId));
+    const slotIds = verifying.map((slot) => slot.id);
+    const coveredRows: Array<{ refId: string }> = await this.jobs.manager.query(
+      `SELECT DISTINCT j."ref_id" AS "refId"
+         FROM "verification_jobs" j
+         JOIN "order_slots" s ON s."id"::text = j."ref_id"
+        WHERE j."type" = $1
+          AND j."status" = ANY($2::text[])
+          AND j."ref_id" = ANY($3::text[])
+          AND s."status" = 'verifying'
+          AND s."delivered_at" IS NOT NULL
+          AND j."created_at" >= s."delivered_at"`,
+      [DELIVERY_JOB_TYPE, ['pending', 'done', 'manual'], slotIds],
+    );
+    const covered = new Set(coveredRows.map((row) => row.refId));
 
     let enqueued = 0;
     for (const slot of verifying) {
@@ -318,7 +327,11 @@ export class VerificationService implements OnModuleInit {
     return slot;
   }
 
-  /** job 进入 manual：名额停在 verifying，原因留给 T17 人工队列。 */
+  /**
+   * job 进入 manual：名额停在 verifying，原因留给 T17 人工队列。
+   * 只认当前交付轮次（job.created_at >= slot.delivered_at）：上一轮的旧 job
+   * 失败不能给重新交付后的新轮次盖 manual 标记。
+   */
   private async onDeliveryManual(job: VerificationJob): Promise<void> {
     await this.dataSource.transaction(async (tx) => {
       const repo = tx.getRepository(OrderSlot);
@@ -327,6 +340,13 @@ export class VerificationService implements OnModuleInit {
         lock: { mode: 'pessimistic_write' },
       });
       if (!slot || slot.status !== 'verifying') return;
+      if (
+        !slot.deliveredAt ||
+        !job.createdAt ||
+        job.createdAt.getTime() < slot.deliveredAt.getTime()
+      ) {
+        return;
+      }
 
       const reasons = slot.manualReasons ?? [];
       if (!reasons.includes(MANUAL_REASON_VERIFICATION)) {

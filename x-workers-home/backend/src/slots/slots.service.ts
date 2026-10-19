@@ -28,7 +28,7 @@ import { Order } from '../orders/order.entity';
 import { ORDER_FEE_DEN, ORDER_FEE_NUM } from '../orders/orders.service';
 import { ReferralService } from '../referral/referral.service';
 import { User } from '../users/user.entity';
-import { canonicalizeDeliveryUrl } from './delivery-url';
+import { canonicalizeDeliveryUrl, extractDeliveryTweetId } from './delivery-url';
 import { OrderSlot, OrderSlotStatus } from './order-slot.entity';
 
 export { canonicalizeDeliveryUrl } from './delivery-url';
@@ -147,6 +147,7 @@ export class SlotsService {
             deliverDeadlineAt: new Date(now.getTime() + DELIVERY_WINDOW_MS),
             deliveredAt: null,
             deliveryUrl: null,
+            deliveryTweetId: null,
             lastReject: null,
             verifySnapshot: null,
             manualReasons: [],
@@ -173,6 +174,11 @@ export class SlotsService {
    */
   async deliver(slotId: string, userId: string, deliveryUrl: string): Promise<SlotView> {
     const url = canonicalizeDeliveryUrl(deliveryUrl);
+    const tweetId = extractDeliveryTweetId(url);
+    if (!tweetId) {
+      // canonicalizeDeliveryUrl 已校验 status 链接，这里仅作防御。
+      throw new BadRequestException('交付链接不合法');
+    }
 
     let slot: OrderSlot;
     try {
@@ -198,9 +204,14 @@ export class SlotsService {
           throw new BadRequestException('已超过交付截止时间');
         }
 
-        // 预查给友好 409；并发窗口由 uq_order_slots_delivery_url 兜底。
+        // 预查给友好 409；并发窗口由 uq_order_slots_delivery_url 与
+        // uq_order_slots_delivery_tweet_id 双索引兜底。
+        // 按 URL 拦同字符串变体，按 tweet id 拦 handle / i-web 两种形式。
         const duplicate = await repo.findOne({
-          where: { deliveryUrl: url, id: Not(slotId) },
+          where: [
+            { deliveryUrl: url, id: Not(slotId) },
+            { deliveryTweetId: tweetId, id: Not(slotId) },
+          ],
         });
         if (duplicate) {
           throw new ConflictException('该链接已用于其他名额');
@@ -209,6 +220,7 @@ export class SlotsService {
         row.status = 'verifying';
         row.deliveredAt = now;
         row.deliveryUrl = url;
+        row.deliveryTweetId = tweetId;
         return repo.save(row);
       });
     } catch (err) {

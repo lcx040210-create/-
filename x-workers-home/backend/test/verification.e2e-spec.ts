@@ -168,8 +168,12 @@ describe('交付核验 / 重试 / 人工降级 / 申诉 e2e', () => {
   const loadSlot = (id: string) =>
     ds.getRepository(OrderSlot).findOneOrFail({ where: { id } });
 
+  /** 同名额可能有历史轮次的 job：取最新一条。 */
   const getJob = (slotId: string) =>
-    ds.getRepository(VerificationJob).findOne({ where: { type: 'delivery', refId: slotId } });
+    ds.getRepository(VerificationJob).findOne({
+      where: { type: 'delivery', refId: slotId },
+      order: { createdAt: 'DESC', id: 'DESC' },
+    });
 
   const notificationsFor = (userId: string, kind?: string) =>
     ds.getRepository(Notification).find({
@@ -632,5 +636,94 @@ describe('交付核验 / 重试 / 人工降级 / 申诉 e2e', () => {
       'https://twitter.com/i/web/status/99887766?lang=en',
     ).expect(200);
     expect(iweb.body.deliveryUrl).toBe('https://x.com/i/web/status/99887766');
+  });
+
+  it('推文级去重：handle 形式与 /i/web/ 形式指向同一推文 → 第二个 409', async () => {
+    const { orderId } = await makeOrder({ slots: 2, requirements: { keywords: [] } });
+    const first = await makeTaker();
+    const second = await makeTaker();
+    const tokenA = await signToken(first.user);
+    const tokenB = await signToken(second.user);
+    const slotA = (await take(tokenA, orderId).expect(201)).body;
+    const slotB = (await take(tokenB, orderId).expect(201)).body;
+
+    const tweetId = '812345678901234567';
+    const delivered = await deliver(
+      tokenA,
+      slotA.id,
+      `https://x.com/SomeOne/status/${tweetId}`,
+    ).expect(200);
+    expect(delivered.body.deliveryUrl).toBe(`https://x.com/someone/status/${tweetId}`);
+    expect((await loadSlot(slotA.id)).deliveryTweetId).toBe(tweetId);
+
+    // 不同 URL 字符串、同一推文 → 必须按 tweet id 拦截
+    const conflict = await deliver(
+      tokenB,
+      slotB.id,
+      `https://twitter.com/i/web/status/${tweetId}`,
+    ).expect(409);
+    expect(conflict.body.message).toContain('链接');
+
+    const rowB = await loadSlot(slotB.id);
+    expect(rowB.status).toBe('reserved');
+    expect(rowB.deliveryUrl).toBeNull();
+    expect(rowB.deliveryTweetId).toBeNull();
+    expect(await getJob(slotB.id)).toBeNull();
+
+    // DB 部分唯一索引兜底
+    await expect(
+      ds.query(`UPDATE "order_slots" SET "delivery_tweet_id" = $1 WHERE "id" = $2`, [
+        tweetId,
+        slotB.id,
+      ]),
+    ).rejects.toThrow(/uq_order_slots_delivery_tweet_id/);
+  });
+
+  it('补偿扫描只认当前交付轮次：旧 done job 不挡住新轮次，旧 job 也不能给新轮次盖 manual', async () => {
+    const { orderId } = await makeOrder({ slots: 1, requirements: { keywords: ['alpha'] } });
+    const { user: taker, binding } = await makeTaker();
+    const token = await signToken(taker);
+    const slot = (await take(token, orderId).expect(201)).body;
+
+    // 第一轮：交付 → 打回，job1 变为 done
+    await deliver(token, slot.id, tweetUrl(binding.handle)).expect(200);
+    const firstJob = (await getJob(slot.id))!;
+    fakeScraper.getTweet.mockResolvedValueOnce(makeTweet(binding.handle, 'no keyword'));
+    await scheduler.tick();
+    expect((await loadSlot(slot.id)).status).toBe('reserved');
+    expect((await getJob(slot.id))!.status).toBe('done');
+
+    // 第二轮：新链接 + 新任务；删除新任务模拟事务外入队失败
+    const url2 = tweetUrl(binding.handle);
+    await deliver(token, slot.id, url2).expect(200);
+    const secondJob = (await getJob(slot.id))!;
+    expect(secondJob.id).not.toBe(firstJob.id);
+    expect(secondJob.status).toBe('pending');
+    await jobRepo.delete({ id: secondJob.id });
+
+    // job1（第一轮 done）created_at < 当前 delivered_at → 不能视为已覆盖
+    expect(await verification.sweepOrphanVerifying()).toBe(1);
+    const pendingJobs = await ds.getRepository(VerificationJob).find({
+      where: { type: 'delivery', refId: slot.id, status: 'pending' },
+    });
+    expect(pendingJobs).toHaveLength(1);
+    expect(pendingJobs[0].id).not.toBe(firstJob.id);
+
+    // 模拟旧的 pending job 重试到第 4 次失败 → manual：不得给第二轮盖 verification_manual
+    await jobRepo.update(
+      { id: firstJob.id },
+      { status: 'pending', attempts: 3, nextRunAt: new Date(Date.now() - 1_000) },
+    );
+    fakeScraper.getTweet.mockRejectedValue(new XRateLimitError('rate limited'));
+    await scheduler.tick();
+
+    const manualJob = await ds
+      .getRepository(VerificationJob)
+      .findOneOrFail({ where: { id: firstJob.id } });
+    expect(manualJob.status).toBe('manual');
+
+    const row = await loadSlot(slot.id);
+    expect(row.status).toBe('verifying');
+    expect(row.manualReasons).not.toContain('verification_manual');
   });
 });

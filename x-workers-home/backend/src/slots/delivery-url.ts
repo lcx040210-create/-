@@ -64,3 +64,16 @@ export function canonicalizeDeliveryUrl(raw: string): string {
 
   return `https://x.com/${handle}/status/${status[2]}`;
 }
+
+/** 规范化 URL 末尾的推文状态 id（handle 与 /i/web/ 两种形式都适用）。 */
+const CANONICAL_TWEET_ID_PATTERN = /\/status\/(\d+)$/;
+
+/**
+ * 从规范化后的交付 URL 提取推文 id，用于推文级去重：
+ * 同一推文可能以 `/<handle>/status/<id>` 与 `/i/web/status/<id>` 两种字符串形式出现，
+ * URL 唯一索引无法拦截，必须按 id 再建部分唯一索引。
+ */
+export function extractDeliveryTweetId(canonicalUrl: string): string | null {
+  const match = CANONICAL_TWEET_ID_PATTERN.exec((canonicalUrl ?? '').trim());
+  return match ? match[1] : null;
+}

@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import { canonicalizeDeliveryUrl } from './delivery-url';
+import { canonicalizeDeliveryUrl, extractDeliveryTweetId } from './delivery-url';
 
 describe('canonicalizeDeliveryUrl（纯函数）', () => {
   it('x.com 推文链接原样规范化', () => {
@@ -69,5 +69,22 @@ describe('canonicalizeDeliveryUrl（纯函数）', () => {
     expect(() => canonicalizeDeliveryUrl('https://x.com:8443/alice/status/1')).toThrow(
       BadRequestException,
     );
+  });
+});
+
+describe('extractDeliveryTweetId（纯函数）', () => {
+  it('handle 形式与 /i/web/ 形式提取同一 tweet id', () => {
+    expect(extractDeliveryTweetId('https://x.com/someone/status/812345678901234567')).toBe(
+      '812345678901234567',
+    );
+    expect(extractDeliveryTweetId('https://x.com/i/web/status/812345678901234567')).toBe(
+      '812345678901234567',
+    );
+  });
+
+  it('非规范形式 / 空值 → null', () => {
+    expect(extractDeliveryTweetId('https://x.com/someone')).toBeNull();
+    expect(extractDeliveryTweetId('https://x.com/someone/status/abc')).toBeNull();
+    expect(extractDeliveryTweetId('')).toBeNull();
   });
 });
