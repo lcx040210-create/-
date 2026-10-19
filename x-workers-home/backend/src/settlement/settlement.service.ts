@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { Interval } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, LessThanOrEqual, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, LessThanOrEqual, Repository } from 'typeorm';
 import { pctFloor } from '../common/money';
 import { JobFatalError, SchedulerService } from '../jobs/scheduler.service';
 import { VerificationJob } from '../jobs/verification-job.entity';
@@ -160,34 +160,42 @@ export class SettlementService implements OnModuleInit {
    * 锁名额行串行化「查 pending → 入队」，并发 confirm / cron 不会产生重复 job
    *（重复 job 本身也会被 handler 的状态复核挡掉，这里是第二道防线）。
    */
-  private async ensurePayoutJob(slotId: string): Promise<boolean> {
-    return this.dataSource.transaction(async (tx) => {
-      const slot = await tx.getRepository(OrderSlot).findOne({
-        where: { id: slotId },
-        lock: { mode: 'pessimistic_write' },
-      });
-      if (!slot || slot.status !== 'passed') return false;
+  async ensurePayoutJob(slotId: string, tx?: EntityManager): Promise<boolean> {
+    if (tx) return this.ensurePayoutJobTx(tx, slotId);
+    return this.dataSource.transaction((manager) => this.ensurePayoutJobTx(manager, slotId));
+  }
 
-      const jobRepo = tx.getRepository(VerificationJob);
-      const pending = await jobRepo.findOne({
-        where: { type: PAYOUT_JOB_TYPE, refId: slotId, status: 'pending' },
-      });
-      if (pending) return false;
-
-      // 与 SchedulerService.enqueue 默认值保持一致。
-      await jobRepo.save(
-        jobRepo.create({
-          type: PAYOUT_JOB_TYPE,
-          refId: slotId,
-          payload: {},
-          status: 'pending',
-          attempts: 0,
-          nextRunAt: new Date(),
-          lastError: null,
-        }),
-      );
-      return true;
+  private async ensurePayoutJobTx(tx: EntityManager, slotId: string): Promise<boolean> {
+    const slot = await tx.getRepository(OrderSlot).findOne({
+      where: { id: slotId },
+      lock: { mode: 'pessimistic_write' },
     });
+    if (!slot || slot.status !== 'passed') return false;
+
+    const jobRepo = tx.getRepository(VerificationJob);
+    const pending = await jobRepo.findOne({
+      where: { type: PAYOUT_JOB_TYPE, refId: slotId, status: 'pending' },
+    });
+    if (pending) return false;
+
+    // 与 SchedulerService.enqueue 默认值保持一致。
+    await jobRepo.save(
+      jobRepo.create({
+        type: PAYOUT_JOB_TYPE,
+        refId: slotId,
+        payload: {},
+        status: 'pending',
+        attempts: 0,
+        nextRunAt: new Date(),
+        lastError: null,
+      }),
+    );
+    return true;
+  }
+
+  /** 撤销未执行的自动放款任务（T15 争议：名额转 disputed 时调用）。 */
+  async cancelPayoutJob(slotId: string): Promise<void> {
+    await this.scheduler.cancelPending(PAYOUT_JOB_TYPE, slotId);
   }
 
   /**
@@ -205,15 +213,18 @@ export class SettlementService implements OnModuleInit {
     }
 
     // 放款前存活复检（事务外，避免长时间持有行锁）。
-    try {
-      await this.scraper.getTweet(slot.deliveryUrl);
-    } catch (err) {
-      if (err instanceof XNotFoundError) {
-        await this.markManual(slot.id, MANUAL_REASON_SURVIVAL);
-        return;
+    // 人工裁决放行（survival_override=true，T15）跳过复检，避免被已删推文弹回。
+    if (!slot.survivalOverride) {
+      try {
+        await this.scraper.getTweet(slot.deliveryUrl);
+      } catch (err) {
+        if (err instanceof XNotFoundError) {
+          await this.markManual(slot.id, MANUAL_REASON_SURVIVAL);
+          return;
+        }
+        // XUpstreamError / XRateLimitError：交给轮询器退避。
+        throw err;
       }
-      // XUpstreamError / XRateLimitError：交给轮询器退避。
-      throw err;
     }
 
     await this.payout(slot.id);

@@ -83,6 +83,13 @@ export class OrderSlot {
   @Column({ name: 'settled_at', type: 'timestamptz', nullable: true })
   settledAt: Date | null;
 
+  /**
+   * 人工裁决放行（T15 争议 payout / T13 人工核验 pass）：
+   * payout job 跳过存活复检，防止「人工放行被已删推文弹回」。
+   */
+  @Column({ name: 'survival_override', type: 'boolean', default: false })
+  survivalOverride: boolean;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 }

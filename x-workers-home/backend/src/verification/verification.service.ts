@@ -136,7 +136,8 @@ export class VerificationService implements OnModuleInit {
     }
 
     if (pass) {
-      await this.passDelivery(slotId, null, null);
+      // 人工放行：标记 override，T14 存活复检不得把名额弹回 verifying。
+      await this.passDelivery(slotId, null, null, true);
     } else {
       await this.rejectDelivery(slotId, [MANUAL_REJECT_REASON], null, null, adminId);
     }
@@ -244,6 +245,7 @@ export class VerificationService implements OnModuleInit {
     slotId: string,
     expectedDeliveryUrl: string | null,
     tweet: XTweet | null,
+    survivalOverride = false,
   ): Promise<void> {
     await this.dataSource.transaction(async (tx) => {
       const slot = await this.lockVerifyingSlot(tx, slotId, expectedDeliveryUrl);
@@ -256,6 +258,9 @@ export class VerificationService implements OnModuleInit {
 
       slot.status = 'passed';
       slot.confirmedDeadlineAt = new Date(Date.now() + CONFIRM_WINDOW_MS);
+      if (survivalOverride) {
+        slot.survivalOverride = true;
+      }
       if (tweet) {
         slot.verifySnapshot = tweet as unknown as Record<string, any>;
       }
