@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   OnModuleInit,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -21,6 +22,7 @@ import {
 import { JobFatalError, SchedulerService } from '../jobs/scheduler.service';
 import { VerificationJob } from '../jobs/verification-job.entity';
 import { NotificationsService } from '../notifications/notifications.service';
+import { RatingsService } from '../ratings/ratings.service';
 import { User } from '../users/user.entity';
 import { XScraperService } from '../xscraper/xscraper.service';
 import { BindingChange } from './binding-change.entity';
@@ -76,6 +78,8 @@ function containsCode(text: unknown, code: string): boolean {
 
 @Injectable()
 export class BindingsService implements OnModuleInit {
+  private readonly logger = new Logger(BindingsService.name);
+
   constructor(
     @InjectRepository(XBinding)
     private readonly xBindings: Repository<XBinding>,
@@ -87,6 +91,7 @@ export class BindingsService implements OnModuleInit {
     private readonly scheduler: SchedulerService,
     private readonly scraper: XScraperService,
     private readonly notifications: NotificationsService,
+    private readonly ratings: RatingsService,
   ) {}
 
   onModuleInit(): void {
@@ -390,7 +395,19 @@ export class BindingsService implements OnModuleInit {
     }
 
     if (mode === 'initial') {
-      await this.activate(userId, handle, code);
+      const activated = await this.activate(userId, handle, code);
+      if (activated) {
+        // 绑定时初评：评级失败绝不能阻断绑定成功
+        try {
+          await this.ratings.computeForUser(userId);
+        } catch (err) {
+          this.logger.warn(
+            `绑定初评失败 userId=${userId} handle=${handle}：${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        }
+      }
     } else {
       await this.createXChange(userId, handle);
     }
@@ -412,11 +429,12 @@ export class BindingsService implements OnModuleInit {
     return Number.isNaN(createdAt) || createdAt >= startedAt;
   }
 
-  private async activate(userId: string, handle: string, code: string): Promise<void> {
-    await this.dataSource.transaction(async (tx) => {
+  /** @returns 本次调用是否真正完成了激活（旧 job / 状态已变化时 false） */
+  private async activate(userId: string, handle: string, code: string): Promise<boolean> {
+    return this.dataSource.transaction(async (tx) => {
       const repo = tx.getRepository(XBinding);
       const binding = await repo.findOne({ where: { userId } });
-      if (!binding || binding.status !== 'pending' || binding.code !== code) return;
+      if (!binding || binding.status !== 'pending' || binding.code !== code) return false;
 
       binding.status = 'active';
       binding.verifiedAt = new Date();
@@ -436,6 +454,8 @@ export class BindingsService implements OnModuleInit {
         body: `已绑定 @${handle}`,
         ref: { type: 'x_binding', id: binding.id },
       });
+
+      return true;
     });
   }
 

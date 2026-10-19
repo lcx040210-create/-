@@ -161,7 +161,9 @@ describe('X binding + scheduler + notifications + binding changes (e2e)', () => 
 
     const job = await jobFor(userId);
     expect(job).toMatchObject({ status: 'done', attempts: 1 });
-    expect(fakeScraper.getRecentTweets).not.toHaveBeenCalled();
+    // 验证阶段走 bio，无推文扫描；这里的一次调用来自激活后的绑定初评（20 条窗口）
+    expect(fakeScraper.getRecentTweets).toHaveBeenCalledTimes(1);
+    expect(fakeScraper.getRecentTweets).toHaveBeenCalledWith(handle, 20);
   });
 
   it('最近推文含验证码 → 绑定成功', async () => {

@@ -6,6 +6,7 @@ import { BindingsModule } from './bindings/bindings.module';
 import { databaseOptions } from './config/database.config';
 import { HealthController } from './health/health.controller';
 import { NotificationsModule } from './notifications/notifications.module';
+import { RatingsModule } from './ratings/ratings.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { NotificationsModule } from './notifications/notifications.module';
     AuthModule,
     BindingsModule,
     NotificationsModule,
+    RatingsModule,
   ],
   controllers: [HealthController],
 })

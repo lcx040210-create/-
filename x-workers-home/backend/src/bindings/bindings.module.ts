@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { JobsModule } from '../jobs/jobs.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { RatingsModule } from '../ratings/ratings.module';
 import { User } from '../users/user.entity';
 import { XScraperModule } from '../xscraper/xscraper.module';
 import { BindingChange } from './binding-change.entity';
@@ -14,6 +15,7 @@ import { XBinding } from './x-binding.entity';
     TypeOrmModule.forFeature([XBinding, BindingChange, User]),
     JobsModule,
     NotificationsModule,
+    RatingsModule,
     XScraperModule,
   ],
   controllers: [BindingsController],
