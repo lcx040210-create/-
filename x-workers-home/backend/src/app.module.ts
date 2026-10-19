@@ -8,6 +8,7 @@ import { DepositsModule } from './deposits/deposits.module';
 import { HealthController } from './health/health.controller';
 import { LedgerModule } from './ledger/ledger.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { OrdersModule } from './orders/orders.module';
 import { RatingsModule } from './ratings/ratings.module';
 import { ReferralModule } from './referral/referral.module';
 import { WithdrawalsModule } from './withdrawals/withdrawals.module';
@@ -24,6 +25,7 @@ import { WithdrawalsModule } from './withdrawals/withdrawals.module';
     DepositsModule,
     LedgerModule,
     NotificationsModule,
+    OrdersModule,
     RatingsModule,
     ReferralModule,
     WithdrawalsModule,
