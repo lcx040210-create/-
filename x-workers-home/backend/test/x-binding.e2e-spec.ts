@@ -259,24 +259,27 @@ describe('X binding + scheduler + notifications + binding changes (e2e)', () => 
     expect(list.items[0]).toMatchObject({ kind: 'x_binding_failed' });
   });
 
-  it('suspended 用户 start 被拒；封禁前发起的绑定激活后仍保持 suspended', async () => {
-    // 入口拒绝 suspended 用户
+  it('suspended 用户 JWT 全端点 401；封禁前发起的绑定激活后仍保持 suspended', async () => {
+    // T17：封禁在 JWT validate 层全端点生效 → 401（不再进入业务 service）。
     const banned = await registerUser();
     await ds.getRepository(User).update({ id: banned.userId }, { status: 'suspended' });
     await request(server())
       .post('/api/bindings/x/start')
       .set(auth(banned.token))
       .send({ handle: uniqueHandle('ban') })
-      .expect(403);
+      .expect(401);
 
-    // 验证期间被封禁：绑定可以完成，但激活不得覆盖 suspended
+    // 验证期间被封禁：后台 job 仍可完成绑定，但激活不得覆盖 suspended。
     const user = await registerUser();
     const handle = uniqueHandle('late');
     const started = await startBinding(user.token, handle);
     await ds.getRepository(User).update({ id: user.userId }, { status: 'suspended' });
     await bindWithBio(user.token, handle, started.code);
 
-    expect(await bindingStatus(user.token)).toEqual({ status: 'active', handle });
+    const binding = await ds
+      .getRepository(XBinding)
+      .findOneOrFail({ where: { userId: user.userId } });
+    expect(binding).toMatchObject({ status: 'active', handle });
     const row = await ds.getRepository(User).findOneOrFail({ where: { id: user.userId } });
     expect(row.status).toBe('suspended');
   });

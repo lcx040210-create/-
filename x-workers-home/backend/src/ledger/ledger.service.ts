@@ -20,6 +20,7 @@ export type LedgerKind =
   | 'withdrawal_fee'
   | 'referral_rebate'
   | 'forfeit'
+  | 'penalty_compensation'
   | 'deletion_clawback';
 
 export type LedgerRef = {

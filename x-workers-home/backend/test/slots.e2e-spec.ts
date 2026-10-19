@@ -779,17 +779,18 @@ describe('抢单防超卖 / 交付 / 3h 超时 e2e', () => {
     expect(others.body.items).toHaveLength(0);
   });
 
-  it('接单资格：需 active + X 绑定 active；未绑定 400、非 active 403，绑定后放行', async () => {
+  it('接单资格：需 active + X 绑定 active；未绑定 400、封禁 401，绑定后放行', async () => {
     const { orderId } = await makeOrder({ slots: 3 });
 
     const unbound = await makeUser();
     const unboundRes = await take(await signToken(unbound), orderId).expect(400);
     expect(unboundRes.body.message).toContain('X 绑定');
 
+    // T17：封禁在 JWT validate 层全端点生效 → 401（不再进入业务 service）。
     const suspended = await makeUser({ status: 'suspended' });
     await bindX(suspended.id);
-    const suspendedRes = await take(await signToken(suspended), orderId).expect(403);
-    expect(suspendedRes.body.message).toContain('接单');
+    const suspendedRes = await take(await signToken(suspended), orderId).expect(401);
+    expect(suspendedRes.body.message).toContain('封禁');
 
     // 资格不满足时不产生名额
     expect(await slotRows(orderId)).toHaveLength(0);

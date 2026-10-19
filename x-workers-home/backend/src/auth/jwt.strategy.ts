@@ -26,6 +26,10 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     if (!user) {
       throw new UnauthorizedException('用户不存在');
     }
+    // 封禁全端点生效：不依赖各业务 service 的 status 检查，旧 JWT 也立即失效。
+    if (user.status === 'suspended') {
+      throw new UnauthorizedException('账号已被封禁');
+    }
     return { userId: user.id, role: user.role, status: user.status };
   }
 }

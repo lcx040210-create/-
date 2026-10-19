@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { AdminModule } from './admin/admin.module';
 import { AuthModule } from './auth/auth.module';
 import { BindingsModule } from './bindings/bindings.module';
 import { databaseOptions } from './config/database.config';
@@ -25,6 +26,7 @@ import { WithdrawalsModule } from './withdrawals/withdrawals.module';
       autoLoadEntities: false,
     }),
     ScheduleModule.forRoot(),
+    AdminModule,
     AuthModule,
     BindingsModule,
     DepositsModule,
