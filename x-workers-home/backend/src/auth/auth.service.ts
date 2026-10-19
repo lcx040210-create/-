@@ -1,0 +1,166 @@
+import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import { InjectRepository } from '@nestjs/typeorm';
+import { createHash, randomBytes, randomUUID } from 'crypto';
+import { verifyMessage } from 'ethers';
+import { Repository } from 'typeorm';
+import { User } from '../users/user.entity';
+import { AuthNonce } from './entities/auth-nonce.entity';
+import { RefreshToken } from './entities/refresh-token.entity';
+
+export const NONCE_TTL_MS = 10 * 60 * 1000;
+const ACCESS_TOKEN_TTL = '15m';
+const REFRESH_TOKEN_TTL = '7d';
+const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+export interface AuthUserView {
+  id: string;
+  address: string;
+  status: string;
+  role: string;
+  rating_grade: string | null;
+}
+
+export interface TokenPair {
+  accessToken: string;
+  refreshToken: string;
+  user: AuthUserView;
+}
+
+export function buildLoginMessage(address: string, nonce: string): string {
+  return `X工作者之家 登录\n地址: ${address}\nNonce: ${nonce}`;
+}
+
+function hashToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
+}
+
+function toView(user: User): AuthUserView {
+  return {
+    id: user.id,
+    address: user.address,
+    status: user.status,
+    role: user.role,
+    rating_grade: user.ratingGrade,
+  };
+}
+
+@Injectable()
+export class AuthService {
+  constructor(
+    @InjectRepository(User) private readonly users: Repository<User>,
+    @InjectRepository(AuthNonce) private readonly nonces: Repository<AuthNonce>,
+    @InjectRepository(RefreshToken)
+    private readonly refreshTokens: Repository<RefreshToken>,
+    private readonly jwt: JwtService,
+  ) {}
+
+  async issueNonce(rawAddress: string) {
+    const address = rawAddress.toLowerCase();
+    const nonce = randomBytes(16).toString('hex');
+    const expiresAt = new Date(Date.now() + NONCE_TTL_MS);
+
+    await this.nonces.upsert({ address, nonce, expiresAt, used: false }, ['address']);
+
+    return { nonce, message: buildLoginMessage(address, nonce) };
+  }
+
+  async verify(rawAddress: string, signature: string): Promise<TokenPair> {
+    const address = rawAddress.toLowerCase();
+    const nonceRow = await this.nonces.findOne({ where: { address } });
+    if (!nonceRow || nonceRow.used || nonceRow.expiresAt.getTime() <= Date.now()) {
+      throw new UnauthorizedException('Nonce 无效或已过期');
+    }
+
+    let recovered: string;
+    try {
+      recovered = verifyMessage(buildLoginMessage(address, nonceRow.nonce), signature);
+    } catch {
+      throw new UnauthorizedException('签名无效');
+    }
+    if (recovered.toLowerCase() !== address) {
+      throw new UnauthorizedException('签名无效');
+    }
+
+    // 原子消费 nonce：并发重放中只有一次能抢到未使用且未过期的行
+    const consumed = await this.nonces
+      .createQueryBuilder()
+      .update(AuthNonce)
+      .set({ used: true })
+      .where('address = :address', { address })
+      .andWhere('nonce = :nonce', { nonce: nonceRow.nonce })
+      .andWhere('used = false')
+      .andWhere('expires_at > now()')
+      .execute();
+    if (!consumed.affected) {
+      throw new UnauthorizedException('Nonce 无效或已过期');
+    }
+
+    let user = await this.users.findOne({ where: { address } });
+    if (!user) {
+      user = await this.users.save(
+        this.users.create({ address, status: 'pending_x_binding', role: 'user' }),
+      );
+    }
+
+    return this.issueTokens(user);
+  }
+
+  async refresh(refreshToken: string): Promise<TokenPair> {
+    const stored = await this.refreshTokens.findOne({
+      where: { tokenHash: hashToken(refreshToken) },
+    });
+    if (!stored || stored.revoked || stored.expiresAt.getTime() <= Date.now()) {
+      throw new UnauthorizedException('Refresh token 无效或已过期');
+    }
+
+    // 原子轮换：并发复用同一个 refresh token 时只有一次成功
+    const revoked = await this.refreshTokens
+      .createQueryBuilder()
+      .update(RefreshToken)
+      .set({ revoked: true })
+      .where('id = :id', { id: stored.id })
+      .andWhere('revoked = false')
+      .execute();
+    if (!revoked.affected) {
+      throw new UnauthorizedException('Refresh token 无效或已过期');
+    }
+
+    const user = await this.users.findOne({ where: { id: stored.userId } });
+    if (!user) {
+      throw new UnauthorizedException('用户不存在');
+    }
+
+    return this.issueTokens(user);
+  }
+
+  async me(userId: string): Promise<AuthUserView> {
+    const user = await this.users.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new UnauthorizedException('用户不存在');
+    }
+    return toView(user);
+  }
+
+  private async issueTokens(user: User): Promise<TokenPair> {
+    const payload = { sub: user.id, role: user.role };
+    const accessToken = await this.jwt.signAsync(payload, {
+      secret: process.env.JWT_SECRET,
+      expiresIn: ACCESS_TOKEN_TTL,
+    });
+    // jti 保证同一秒内轮换出的 refresh token 也不与旧 token 重复
+    const refreshToken = await this.jwt.signAsync(
+      { ...payload, jti: randomUUID() },
+      { secret: process.env.JWT_REFRESH_SECRET, expiresIn: REFRESH_TOKEN_TTL },
+    );
+
+    await this.refreshTokens.insert({
+      userId: user.id,
+      tokenHash: hashToken(refreshToken),
+      expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
+      revoked: false,
+    });
+
+    return { accessToken, refreshToken, user: toView(user) };
+  }
+}
