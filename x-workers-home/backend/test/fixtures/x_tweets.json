@@ -1,0 +1,74 @@
+{
+  "handle": "alice",
+  "count": 2,
+  "more": true,
+  "tweets": [
+    {
+      "id": "1770000000000000001",
+      "url": "https://x.com/alice/status/1770000000000000001",
+      "created_at": "2026-10-18T12:34:56Z",
+      "author": {
+        "handle": "alice",
+        "name": "Alice",
+        "id": "1234567890",
+        "followers": 12345,
+        "following": 321,
+        "verified": true,
+        "verified_type": "blue"
+      },
+      "text": "gm. shipping today.",
+      "lang": "en",
+      "views": 12000,
+      "likes": 345,
+      "reposts": 12,
+      "quotes": 3,
+      "replies": 8,
+      "bookmarks": 20,
+      "media": [
+        {
+          "type": "photo",
+          "url": "https://pbs.twimg.com/media/abc123.jpg"
+        }
+      ],
+      "poll": [
+        { "label": "yes", "votes": 100, "percent": 60 },
+        { "label": "no", "votes": 66, "percent": 40 }
+      ],
+      "sensitive": true,
+      "quoted": {
+        "id": "1770000000000000002",
+        "url": "https://x.com/bob/status/1770000000000000002",
+        "created_at": "2026-10-18T10:00:00Z",
+        "author": {
+          "handle": "bob",
+          "name": "Bob",
+          "id": "987654321"
+        },
+        "text": "original",
+        "lang": "en"
+      }
+    },
+    {
+      "id": "1770000000000000003",
+      "url": "https://x.com/alice/status/1770000000000000003",
+      "created_at": "2026-10-17T08:00:00Z",
+      "author": {
+        "handle": "alice",
+        "name": "Alice",
+        "id": "1234567890"
+      },
+      "text": "@bob agreed",
+      "lang": "en",
+      "views": null,
+      "likes": null,
+      "reposts": 0,
+      "quotes": 0,
+      "replies": 1,
+      "bookmarks": 0,
+      "reply_to": {
+        "handle": "bob",
+        "id": "1770000000000000002"
+      }
+    }
+  ]
+}

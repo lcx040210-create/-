@@ -1,0 +1,29 @@
+{
+  "user": {
+    "handle": "alice",
+    "name": "Alice",
+    "id": "1234567890",
+    "followers": 12345,
+    "following": 321,
+    "verified": true,
+    "verified_type": "blue",
+    "bio": "Building on-chain",
+    "location": "Singapore",
+    "website": "https://alice.example",
+    "tweets": 5678,
+    "likes": 4321,
+    "media_count": 89,
+    "joined": "2021-03-05T00:00:00Z",
+    "avatar": "https://pbs.twimg.com/profile_images/1/avatar_400x400.jpg",
+    "banner": "https://pbs.twimg.com/profile_banners/1/1",
+    "url": "https://x.com/alice",
+    "about": {
+      "based_in": "Singapore",
+      "based_in_accurate": true,
+      "signed_up_via": "Web",
+      "signup_country_accurate": false,
+      "username_changes": 2,
+      "last_username_change": "2023-01-02T03:04:05Z"
+    }
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "tweet": {
+    "id": "1770000000000000001",
+    "url": "https://x.com/alice/status/1770000000000000001",
+    "created_at": "2026-10-18T12:34:56Z",
+    "author": {
+      "handle": "alice",
+      "name": "Alice",
+      "id": "1234567890",
+      "followers": 12345,
+      "following": 321,
+      "verified": true,
+      "verified_type": "blue"
+    },
+    "text": "gm. shipping today.",
+    "lang": "en",
+    "views": 12000,
+    "likes": 345,
+    "reposts": 12,
+    "quotes": 3,
+    "replies": 8,
+    "bookmarks": 20,
+    "reply_to": {
+      "handle": "bob",
+      "id": "1770000000000000002"
+    },
+    "media": [
+      {
+        "type": "photo",
+        "url": "https://pbs.twimg.com/media/abc123.jpg"
+      }
+    ],
+    "article": {
+      "title": "Long form",
+      "preview": "A preview",
+      "text": "Full article text"
+    }
+  }
+}
