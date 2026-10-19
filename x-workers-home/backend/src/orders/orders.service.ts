@@ -2,14 +2,20 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, In, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, Not, Repository } from 'typeorm';
 import { XBinding } from '../bindings/x-binding.entity';
 import { MICRO, formatXm, parseXm, pctFloor } from '../common/money';
 import { LedgerService } from '../ledger/ledger.service';
+import {
+  ESCROW_HELD_SLOT_STATUSES,
+  OrderSlot,
+  OrderSlotStatus,
+} from '../slots/order-slot.entity';
 import { User } from '../users/user.entity';
 import { CreateOrderDto, OrderRequirementsDto } from './dto/create-order.dto';
 import { ListOrdersDto } from './dto/list-orders.dto';
@@ -35,13 +41,28 @@ export interface OrderView {
   /** 接单方到手 = P − pctFloor(P, 5, 100)。 */
   payoutXm: string;
   slotsTotal: number;
-  /** T11 尚无 slots 表：= slots_total；T12 改为扣除非 expired 名额。 */
+  /** 自由池 = slots_total − 非 expired 名额数（T12）。 */
   slotsAvailable: number;
   merchantRatingGrade: string | null;
   status: OrderStatus;
   expiresAt: Date;
   createdAt: Date;
   closedAt: Date | null;
+}
+
+/** 公开名额视图：1.0 脱敏——不暴露 delivery_url / verify_snapshot / last_reject。 */
+export interface OrderSlotPublicView {
+  id: string;
+  status: OrderSlotStatus;
+  acceptedAt: Date;
+  deliverDeadlineAt: Date;
+  deliveredAt: Date | null;
+  createdAt: Date;
+  creator: { nickname: string | null; ratingGrade: string | null };
+}
+
+export interface OrderDetailView extends OrderView {
+  slots: OrderSlotPublicView[];
 }
 
 export interface OrderListResult {
@@ -109,7 +130,7 @@ export class OrdersService {
       );
     });
 
-    return this.toView(created, await this.userGrade(userId), false);
+    return this.toView(created, await this.userGrade(userId), false, 0);
   }
 
   /** 公开列表：默认 recruiting，最新在前；可按类型筛选、单价降序、分页。 */
@@ -131,10 +152,16 @@ export class OrdersService {
 
     const [rows, total] = await qb.getManyAndCount();
     const grades = await this.gradesFor(rows.map((row) => row.merchantUserId));
+    const takenCounts = await this.takenCounts(rows.map((row) => row.id));
 
     return {
       items: rows.map((row) =>
-        this.toView(row, grades.get(row.merchantUserId) ?? null, true),
+        this.toView(
+          row,
+          grades.get(row.merchantUserId) ?? null,
+          true,
+          takenCounts.get(row.id) ?? 0,
+        ),
       ),
       total,
       page,
@@ -142,22 +169,57 @@ export class OrdersService {
     };
   }
 
-  /** 公开详情；closed / completed 均可查看。 */
-  async detail(id: string): Promise<OrderView> {
+  /** 公开详情；closed / completed 均可查看，附公开名额列表（脱敏）。 */
+  async detail(id: string): Promise<OrderDetailView> {
     const order = await this.orders.findOne({ where: { id } });
     if (!order) {
       throw new NotFoundException('商单不存在');
     }
-    return this.toView(order, await this.userGrade(order.merchantUserId), false);
+
+    const slotRows = await this.orders.manager.getRepository(OrderSlot).find({
+      where: { orderId: id },
+      order: { createdAt: 'ASC', id: 'ASC' },
+    });
+    const creatorIds = Array.from(new Set(slotRows.map((slot) => slot.creatorUserId)));
+    const creators = creatorIds.length
+      ? await this.users.findBy({ id: In(creatorIds) })
+      : [];
+    const creatorById = new Map(creators.map((user) => [user.id, user]));
+    const takenCount = slotRows.filter((slot) => slot.status !== 'expired').length;
+
+    return {
+      ...this.toView(
+        order,
+        await this.userGrade(order.merchantUserId),
+        false,
+        takenCount,
+      ),
+      slots: slotRows.map((slot) => {
+        const creator = creatorById.get(slot.creatorUserId);
+        // 1.0 公开字段脱敏：只给状态、时间与创作者展示信息，不含交付链接。
+        return {
+          id: slot.id,
+          status: slot.status,
+          acceptedAt: slot.acceptedAt,
+          deliverDeadlineAt: slot.deliverDeadlineAt,
+          deliveredAt: slot.deliveredAt,
+          createdAt: slot.createdAt,
+          creator: {
+            nickname: creator?.nickname ?? null,
+            ratingGrade: creator?.ratingGrade ?? null,
+          },
+        };
+      }),
+    };
   }
 
   /**
    * 下架（商家）：recruiting → closed。
-   * 退自由池 ×P；从未被接（fee_earned=false）连 fee 一起退，即全额。
-   * 已接名额继续走完（名额表与后续流程在 T12-T14）。
+   * 只退自由池（slots_total − 非 expired 名额）；活跃名额继续走完，P 留在 escrow。
+   * fee 未赚（从未被抢）时活跃名额必为 0，退款自然含 fee，即全额。
    */
   async close(userId: string, id: string): Promise<OrderView> {
-    const row = await this.dataSource.transaction(async (tx) => {
+    const { order, taken } = await this.dataSource.transaction(async (tx) => {
       const repo = tx.getRepository(Order);
       const order = await repo.findOne({
         where: { id },
@@ -173,10 +235,27 @@ export class OrdersService {
         throw new BadRequestException('只有招募中的商单可以下架');
       }
 
-      // T11 尚无名额表：自由池 = slots_total（T12 起扣除未过期名额）。
-      const freeSlots = order.slotsTotal;
-      const refundMicro =
+      const slotRepo = tx.getRepository(OrderSlot);
+      const taken = await slotRepo.count({
+        where: { orderId: id, status: Not('expired') },
+      });
+      const held = await slotRepo.count({
+        where: { orderId: id, status: In([...ESCROW_HELD_SLOT_STATUSES]) },
+      });
+      const freeSlots = order.slotsTotal - taken;
+
+      // 退款 = 托管 − 活跃名额仍占用的 P；等价于「自由池 × P + 未赚的 fee」。
+      const refundMicro = order.escrowMicro - order.priceMicro * BigInt(held);
+      const expectedRefund =
         order.priceMicro * BigInt(freeSlots) + (order.feeEarned ? 0n : order.feeMicro);
+      // DB 无 CHECK：这里断言订单托管账未被破坏。
+      if (
+        refundMicro < 0n ||
+        refundMicro > order.escrowMicro ||
+        refundMicro !== expectedRefund
+      ) {
+        throw new InternalServerErrorException('托管不变量异常：下架退款额越界');
+      }
 
       if (refundMicro > 0n) {
         await this.ledger.transfer(tx, {
@@ -191,10 +270,24 @@ export class OrdersService {
       order.escrowMicro -= refundMicro;
       order.status = 'closed';
       order.closedAt = new Date();
-      return repo.save(order);
+      return { order: await repo.save(order), taken };
     });
 
-    return this.toView(row, await this.userGrade(userId), false);
+    return this.toView(order, await this.userGrade(userId), false, taken);
+  }
+
+  /** 批量统计各订单的非 expired 名额数（自由池计算）。 */
+  private async takenCounts(orderIds: string[]): Promise<Map<string, number>> {
+    if (orderIds.length === 0) return new Map();
+    const rows: Array<{ orderId: string; count: number }> =
+      await this.orders.manager.query(
+        `SELECT "order_id" AS "orderId", COUNT(*)::int AS "count"
+           FROM "order_slots"
+          WHERE "order_id" = ANY($1::uuid[]) AND "status" <> 'expired'
+          GROUP BY "order_id"`,
+        [orderIds],
+      );
+    return new Map(rows.map((row) => [row.orderId, row.count]));
   }
 
   private async assertPublishable(tx: EntityManager, userId: string): Promise<void> {
@@ -262,6 +355,7 @@ export class OrdersService {
     order: Order,
     merchantRatingGrade: string | null,
     summaryBrief: boolean,
+    takenCount: number,
   ): OrderView {
     return {
       id: order.id,
@@ -275,7 +369,7 @@ export class OrdersService {
         order.priceMicro - pctFloor(order.priceMicro, ORDER_FEE_NUM, ORDER_FEE_DEN),
       ),
       slotsTotal: order.slotsTotal,
-      slotsAvailable: order.slotsTotal,
+      slotsAvailable: order.slotsTotal - takenCount,
       merchantRatingGrade,
       status: order.status,
       expiresAt: order.expiresAt,

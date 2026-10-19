@@ -11,6 +11,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { OrdersModule } from './orders/orders.module';
 import { RatingsModule } from './ratings/ratings.module';
 import { ReferralModule } from './referral/referral.module';
+import { SlotsModule } from './slots/slots.module';
 import { WithdrawalsModule } from './withdrawals/withdrawals.module';
 
 @Module({
@@ -28,6 +29,7 @@ import { WithdrawalsModule } from './withdrawals/withdrawals.module';
     OrdersModule,
     RatingsModule,
     ReferralModule,
+    SlotsModule,
     WithdrawalsModule,
   ],
   controllers: [HealthController],

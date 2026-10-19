@@ -21,8 +21,9 @@ export interface OrderRequirements {
 
 /**
  * 商单。金额均为 micro-XM bigint。
- * 托管不变量：escrow_micro = P × (slots_total − 已终态名额数) + (fee_earned ? 0 : fee_micro)。
- * 名额表在 T12 引入；T11 创建时全部名额均为自由池。
+ * 托管不变量（招募中）：escrow_micro = P × (slots_total − paid − refunded)
+ *   + (fee_earned ? 0 : fee_micro)；expired 名额回自由池，不减少托管。
+ * 下架后自由池已退款：escrow_micro = P × 仍在托管中的活跃名额数。
  */
 @Entity('orders')
 export class Order {
