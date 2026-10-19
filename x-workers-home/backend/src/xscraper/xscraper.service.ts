@@ -42,17 +42,23 @@ interface XScraperPayload {
   tweet?: unknown;
 }
 
-function resolveScriptPath(script: string): string {
+export function resolveScriptPath(
+  script: string,
+  cwd: string = process.cwd(),
+  dirname: string = __dirname,
+): string {
   if (path.isAbsolute(script)) {
     return script;
   }
 
-  // cwd 可能是 backend（npm/nest 的常规运行目录）；
+  // cwd 可能是 backend（npm/nest 的常规运行目录），也可能是仓库根
+  // （pm2 / 容器 WORKDIR / node backend/dist/main.js）。
   // __dirname 在 ts-jest 下是 backend/src/xscraper，编译后是 backend/dist/xscraper，
-  // 两者向上三级都到 monorepo 根（x-workers-home/）。
+  // 两者向上两级都是 backend/；XSCRAPER_SCRIPT（.env.example 的 ../tools/x.py）
+  // 按约定相对 backend 解析，所以这里以 backend/ 为基准。
   const candidates = [
-    path.resolve(process.cwd(), script),
-    path.resolve(__dirname, '../../../', script),
+    path.resolve(cwd, script),
+    path.resolve(dirname, '../..', script),
   ];
   return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0];
 }

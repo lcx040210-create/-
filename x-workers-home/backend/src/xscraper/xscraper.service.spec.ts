@@ -1,7 +1,8 @@
-import { readFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import * as path from 'path';
 import { CommandResult, CommandRunner, CommandTimeoutError } from './command-runner';
 import {
+  resolveScriptPath,
   XNotFoundError,
   XRateLimitError,
   XScraperService,
@@ -146,5 +147,40 @@ describe('XScraperService', () => {
     const svc = create(runner);
 
     await expect(svc.getProfile('alice')).rejects.toBeInstanceOf(XNotFoundError);
+  });
+});
+
+describe('resolveScriptPath', () => {
+  const backendDir = path.resolve(__dirname, '../..');
+  const repoRoot = path.resolve(backendDir, '..');
+  const expected = path.resolve(repoRoot, 'tools/x.py');
+  const srcDirname = path.join(backendDir, 'src', 'xscraper');
+  const distDirname = path.join(backendDir, 'dist', 'xscraper');
+
+  it('cwd 为 backend 时解析到 tools/x.py', () => {
+    expect(resolveScriptPath('../tools/x.py', backendDir, srcDirname)).toBe(expected);
+  });
+
+  it('cwd 为仓库根（非 backend）时回退解析仍指向 x-workers-home/tools/x.py', () => {
+    const resolved = resolveScriptPath('../tools/x.py', repoRoot, srcDirname);
+
+    expect(resolved).toBe(expected);
+    expect(existsSync(resolved)).toBe(true);
+  });
+
+  it('编译后 dist/xscraper 的 __dirname 回退解析正确', () => {
+    expect(resolveScriptPath('../tools/x.py', repoRoot, distDirname)).toBe(expected);
+  });
+
+  it('绝对路径原样返回', () => {
+    const absolute = path.resolve(backendDir, 'tools', 'x.py');
+
+    expect(resolveScriptPath(absolute, repoRoot, backendDir)).toBe(absolute);
+  });
+
+  it('无候选存在时返回 cwd 相对路径', () => {
+    expect(resolveScriptPath('../missing/x.py', backendDir, backendDir)).toBe(
+      path.resolve(backendDir, '../missing/x.py'),
+    );
   });
 });
