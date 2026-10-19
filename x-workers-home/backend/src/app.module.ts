@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from './auth/auth.module';
 import { BindingsModule } from './bindings/bindings.module';
 import { databaseOptions } from './config/database.config';
+import { DepositsModule } from './deposits/deposits.module';
 import { HealthController } from './health/health.controller';
 import { LedgerModule } from './ledger/ledger.module';
 import { NotificationsModule } from './notifications/notifications.module';
@@ -18,6 +19,7 @@ import { RatingsModule } from './ratings/ratings.module';
     ScheduleModule.forRoot(),
     AuthModule,
     BindingsModule,
+    DepositsModule,
     LedgerModule,
     NotificationsModule,
     RatingsModule,

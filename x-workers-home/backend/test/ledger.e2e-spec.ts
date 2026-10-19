@@ -216,6 +216,77 @@ describe('账本核心 e2e（accounts / ledger_entries / 资金原语）', () =>
     );
   });
 
+  it('托管往返基线：user→escrow 再 escrow→user，总额不变、余额正确', async () => {
+    const alice = await makeUser();
+    await ds.transaction(async (tx) => {
+      await ledger.credit(tx, {
+        userId: alice,
+        amountMicro: 100n * XM,
+        kind: 'deposit_credit',
+        ref: { type: 'deposit', id: randomUUID() },
+      });
+    });
+    const totalBefore = await sumAll();
+    const escrowBefore = await platformBalance('escrow');
+
+    // 用户 → escrow（订单冻结）：总额不变，escrow +60
+    const freezeRef = randomUUID();
+    await ds.transaction(async (tx) => {
+      await ledger.transfer(tx, {
+        from: { userId: alice },
+        to: { platform: 'escrow' },
+        amountMicro: 60n * XM,
+        kind: 'order_freeze',
+        ref: { type: 'order', id: freezeRef },
+        memo: '订单托管',
+      });
+    });
+    expect(await balancesOf(alice)).toEqual({ available: 40n * XM, frozen: 0n });
+    const escrowAfterFreeze = await platformBalance('escrow');
+    expect(escrowAfterFreeze.available - escrowBefore.available).toBe(60n * XM);
+    expect(await sumAll()).toBe(totalBefore);
+    expect(await entriesForRef(freezeRef)).toHaveLength(2);
+
+    // escrow → 用户（退款）：总额不变，escrow 净 +35
+    const refundRef = randomUUID();
+    await ds.transaction(async (tx) => {
+      await ledger.transfer(tx, {
+        from: { platform: 'escrow' },
+        to: { userId: alice },
+        amountMicro: 25n * XM,
+        kind: 'order_refund',
+        ref: { type: 'order', id: refundRef },
+        memo: '托管退款',
+      });
+    });
+    expect(await balancesOf(alice)).toEqual({ available: 65n * XM, frozen: 0n });
+    const escrowAfterRefund = await platformBalance('escrow');
+    expect(escrowAfterRefund.available - escrowBefore.available).toBe(35n * XM);
+    expect(await sumAll()).toBe(totalBefore);
+
+    const refundEntries = await entriesForRef(refundRef);
+    expect(refundEntries).toHaveLength(2);
+    expect(refundEntries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          accountId: PLATFORM_ACCOUNTS.escrow,
+          userId: null,
+          kind: 'order_refund',
+          availableDelta: -25n * XM,
+          frozenDelta: 0n,
+        }),
+        expect.objectContaining({
+          accountId: (await accountOf(alice)).id,
+          userId: alice,
+          kind: 'order_refund',
+          availableDelta: 25n * XM,
+          frozenDelta: 0n,
+          availableAfter: 65n * XM,
+        }),
+      ]),
+    );
+  });
+
   it('余额不足抛 InsufficientFundsError，且分毫未动', async () => {
     const alice = await makeUser();
     await ds.transaction(async (tx) => {

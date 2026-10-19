@@ -53,6 +53,7 @@
     "moduleFileExtensions": ["js", "json", "ts"],
     "rootDir": ".",
     "testEnvironment": "node",
+    "maxWorkers": 1,
     "setupFiles": ["<rootDir>/test/setup-e2e.ts"],
     "testRegex": ".*\\.(spec|e2e-spec)\\.ts$",
     "transform": {
