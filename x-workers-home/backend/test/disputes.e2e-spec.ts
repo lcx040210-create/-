@@ -554,6 +554,15 @@ describe('争议（商家申诉 / 人工裁决 / 删帖追回）e2e', () => {
       note: '确认删帖',
       shortfallMicro: '0',
     });
+
+    // 结案后同一 slot 不得再次举报（否则可在 7 天窗口内反复追回）。
+    const takerAfterClawback = await availableOf(taker.id);
+    const again = await reportDeletion(merchantToken, slotId).expect(409);
+    expect(again.body.message).toContain('已处理过');
+    expect(await availableOf(taker.id)).toBe(takerAfterClawback);
+    expect(
+      await ds.getRepository(Dispute).count({ where: { slotId, kind: 'deletion' } }),
+    ).toBe(1);
   });
 
   it('删帖追回：余额不足 → 部分追回 + violations+1 + ruling 记差额', async () => {

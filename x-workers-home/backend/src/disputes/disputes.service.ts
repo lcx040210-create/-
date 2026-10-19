@@ -37,6 +37,11 @@ function isUniqueViolation(err: unknown): boolean {
   return candidate?.code === '23505' || candidate?.driverError?.code === '23505';
 }
 
+function constraintName(err: unknown): string | null {
+  const candidate = err as { driverError?: { constraint?: string } } | null;
+  return candidate?.driverError?.constraint ?? null;
+}
+
 /**
  * 争议（T15）：
  * - 商家在 48h 确认窗内发起质量争议 → 名额 disputed（自动放款只拾取 passed，自然被挡）
@@ -122,6 +127,14 @@ export class DisputesService {
         if (order.merchantUserId !== merchantId) {
           throw new ForbiddenException('只能对自己的商单举报删帖');
         }
+        // 同一 slot 的删帖争议只允许一次（含已结案）：否则可在 7 天窗口内
+        // 反复举报并重复 clawback，破坏「追回至多 P」的资金不变量。
+        const priorDeletion = await tx.getRepository(Dispute).findOne({
+          where: { slotId: slot.id, kind: 'deletion' },
+        });
+        if (priorDeletion) {
+          throw new ConflictException('该订单的删帖争议已处理过');
+        }
         await this.assertNoOpenDispute(tx, slot.id);
         if (slot.status !== 'paid' || !slot.settledAt) {
           throw new BadRequestException('只有已放款的名额可以举报删帖');
@@ -141,6 +154,10 @@ export class DisputesService {
       });
     } catch (err) {
       if (isUniqueViolation(err)) {
+        // 并发兜底：uq_disputes_deletion_once / uq_disputes_open_slot。
+        if (constraintName(err) === 'uq_disputes_deletion_once') {
+          throw new ConflictException('该订单的删帖争议已处理过');
+        }
         throw new ConflictException('该名额已有进行中的争议');
       }
       throw err;
