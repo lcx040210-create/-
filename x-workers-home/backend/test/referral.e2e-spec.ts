@@ -151,9 +151,11 @@ describe('邀请返佣 e2e（20/30/40 档位 + 手续费钩子）', () => {
       .send({ address: wallet.address })
       .expect(201);
     const signature = await wallet.signMessage(nonceBody.message);
+    const terms = await request(server()).get('/api/terms/current').expect(200);
     const payload: Record<string, unknown> = {
       address: wallet.address,
       signature,
+      termsVersion: terms.body.version,
     };
     if (referralCode !== undefined) payload.referralCode = referralCode;
     return request(server())

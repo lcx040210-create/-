@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { HDNodeWallet, Wallet } from 'ethers';
+import { DataSource } from 'typeorm';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/bootstrap';
 
@@ -13,9 +14,17 @@ describe('auth (e2e)', () => {
     app = mod.createNestApplication();
     configureApp(app);
     await app.init();
+    await app.get(DataSource).runMigrations();
   });
 
   afterAll(async () => app.close());
+
+  async function currentTermsVersion(): Promise<number> {
+    const { body } = await request(app.getHttpServer())
+      .get('/api/terms/current')
+      .expect(200);
+    return body.version as number;
+  }
 
   async function login(wallet: Wallet | HDNodeWallet) {
     const { body: nonceBody } = await request(app.getHttpServer())
@@ -23,11 +32,12 @@ describe('auth (e2e)', () => {
       .send({ address: wallet.address })
       .expect(201);
     const signature = await wallet.signMessage(nonceBody.message);
+    const termsVersion = await currentTermsVersion();
     const { body: verified } = await request(app.getHttpServer())
       .post('/api/auth/verify')
-      .send({ address: wallet.address, signature })
+      .send({ address: wallet.address, signature, termsVersion })
       .expect(201);
-    return { nonceBody, signature, verified };
+    return { nonceBody, signature, verified, termsVersion };
   }
 
   it('完整流程：nonce → verify 注册 → me', async () => {
@@ -59,12 +69,12 @@ describe('auth (e2e)', () => {
 
   it('nonce 一次性：复用被拒', async () => {
     const wallet = Wallet.createRandom();
-    const { signature } = await login(wallet);
+    const { signature, termsVersion } = await login(wallet);
 
     // 复用第一次 verify 用过的 nonce + 签名
     await request(app.getHttpServer())
       .post('/api/auth/verify')
-      .send({ address: wallet.address, signature })
+      .send({ address: wallet.address, signature, termsVersion })
       .expect(401);
   });
 
@@ -76,10 +86,11 @@ describe('auth (e2e)', () => {
       .send({ address: wallet.address })
       .expect(201);
     const signature = await impostor.signMessage(nonceBody.message);
+    const termsVersion = await currentTermsVersion();
 
     await request(app.getHttpServer())
       .post('/api/auth/verify')
-      .send({ address: wallet.address, signature })
+      .send({ address: wallet.address, signature, termsVersion })
       .expect(401);
   });
 

@@ -66,9 +66,10 @@ describe('账户评级 e2e（绑定初评 + 公开查询 + 周刷新）', () => 
       .send({ address: wallet.address })
       .expect(201);
     const signature = await wallet.signMessage(nonce.body.message);
+    const terms = await request(server()).get('/api/terms/current').expect(200);
     const verified = await request(server())
       .post('/api/auth/verify')
-      .send({ address: wallet.address, signature })
+      .send({ address: wallet.address, signature, termsVersion: terms.body.version })
       .expect(201);
     createdUserIds.push(verified.body.user.id);
     createdAddresses.push(wallet.address.toLowerCase());

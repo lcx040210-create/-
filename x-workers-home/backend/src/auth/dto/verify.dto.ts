@@ -1,4 +1,11 @@
-import { IsNotEmpty, IsOptional, IsString, Matches } from 'class-validator';
+import {
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Matches,
+  Min,
+} from 'class-validator';
 import { ADDRESS_PATTERN } from './nonce.dto';
 
 export class VerifyDto {
@@ -14,4 +21,10 @@ export class VerifyDto {
   @IsOptional()
   @IsString()
   referralCode?: string;
+
+  // 同意的条款版本：必须等于当前生效版本，否则 400（T19）
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  termsVersion?: number;
 }

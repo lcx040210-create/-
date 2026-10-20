@@ -1,4 +1,8 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash, randomBytes, randomUUID } from 'crypto';
@@ -10,6 +14,7 @@ import {
   XBindingApiStatus,
 } from '../bindings/x-binding.entity';
 import { ReferralService } from '../referral/referral.service';
+import { TermsService } from '../terms/terms.service';
 import { User } from '../users/user.entity';
 import { AuthNonce } from './entities/auth-nonce.entity';
 import { RefreshToken } from './entities/refresh-token.entity';
@@ -63,6 +68,7 @@ export class AuthService {
     private readonly xBindings: Repository<XBinding>,
     private readonly dataSource: DataSource,
     private readonly referral: ReferralService,
+    private readonly terms: TermsService,
     private readonly jwt: JwtService,
   ) {}
 
@@ -80,6 +86,7 @@ export class AuthService {
     rawAddress: string,
     signature: string,
     referralCode?: string,
+    termsVersion?: number,
   ): Promise<TokenPair> {
     const address = rawAddress.toLowerCase();
     const nonceRow = await this.nonces.findOne({ where: { address } });
@@ -111,16 +118,20 @@ export class AuthService {
       throw new UnauthorizedException('Nonce 无效或已过期');
     }
 
-    let user = await this.users.findOne({ where: { address } });
-    if (!user) {
-      // 首次建号：生成邀请码 +（可选）绑定邀请关系，同一事务提交。
-      // 已存在用户的 verify 是登录，忽略 referralCode，不重绑。
-      user = await this.dataSource.transaction(async (tx) => {
-        const repo = tx.getRepository(User);
-        const existing = await repo.findOne({ where: { address } });
-        if (existing) return existing;
+    // 条款校验、建号与同意记录同一事务：当前条款用 FOR SHARE 锁定，
+    // 与发布事务（FOR UPDATE）互斥，避免条款切换期间记录错版本。
+    const user = await this.dataSource.transaction(async (tx) => {
+      const currentTerms = await this.terms.requireCurrent(tx);
+      if (termsVersion !== currentTerms.version) {
+        throw new BadRequestException('请先同意最新服务条款');
+      }
 
-        const created = await repo.save(
+      const repo = tx.getRepository(User);
+      let existing = await repo.findOne({ where: { address } });
+      if (!existing) {
+        // 首次建号：生成邀请码 +（可选）绑定邀请关系，同一事务提交。
+        // 已存在用户的 verify 是登录，忽略 referralCode，不重绑。
+        existing = await repo.save(
           repo.create({
             address,
             status: 'pending_x_binding',
@@ -132,14 +143,18 @@ export class AuthService {
         const code = (referralCode ?? '').trim();
         if (code) {
           await this.referral.bindInvitee(tx, {
-            inviteeUserId: created.id,
+            inviteeUserId: existing.id,
             inviteeAddress: address,
             code,
           });
         }
-        return created;
-      });
-    }
+      }
+
+      // 幂等：当前版本已有同意记录时不重复写（agreed_at 不变）；
+      // 条款升级后旧用户首次携带新版本 verify 时补写一条。
+      await this.terms.recordConsent(tx, existing.id, currentTerms.version);
+      return existing;
+    });
 
     return this.issueTokens(user);
   }
