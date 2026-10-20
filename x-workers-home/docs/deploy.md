@@ -79,7 +79,7 @@ cp deploy/.env.production.example .env.production
 chmod 600 .env.production
 ```
 
-逐项填写（模板里所有 `CHANGE_ME` / `0x000...` 都必须替换）：
+逐项填写（模板里所有 `CHANGE_ME` / `0x0{40}` 都必须替换）：
 
 | 变量 | 要求 |
 | --- | --- |
@@ -108,13 +108,21 @@ openssl rand -hex 24   # DB_PASSWORD
 检查文件权限与占位符：
 
 ```bash
-grep -n 'CHANGE_ME' .env.production   # 不应再有输出
-stat -c '%a %n' .env.production        # 期望 600
+grep -nE 'CHANGE_ME|0x0{40}' .env.production   # 不应再有输出
+stat -c '%a %n' .env.production                # 期望 600
 ```
+
+> **API 启动会校验资金 env**：`JWT_SECRET` / `JWT_REFRESH_SECRET` 必须非空且不同；
+> `PLATFORM_WALLET_ADDRESS` 必须是合法的非零 BSC 地址；`USDT_BEP20_CONTRACT` 必须是合法地址。
+> 任一不满足会直接拒绝启动；`DEPOSIT_MIN_CONFIRMATIONS` 为空/非法时回退 15 并打印 warn。
 
 ---
 
 ## 2. 构建并启动
+
+> **硬门（首次部署）**：未设置 `BSC_START_BLOCK` 且未初始化 `chain_cursors.last_block` 前，不要启动常驻 api。
+> 推荐先在 §1 填好 `BSC_START_BLOCK`（§3 方式 A）；如走方式 B，请先用一次性容器完成 §2.1 迁移并初始化游标，
+> 再启动 api。否则首个 tick 可能从区块 1 开始回扫，造成巨大 RPC 区间。
 
 ```bash
 cd "$APP_DIR"
@@ -173,6 +181,8 @@ curl -fsS -o /dev/null -w '%{http_code}\n' "https://$(grep '^DOMAIN=' .env.produ
 
 ## 3. 首次启动前的 BSC 充值游标（重要）
 
+> **硬门**：未设置 `BSC_START_BLOCK` 且未初始化 `chain_cursors` 前，**不要启动 api**（§2 的 `up -d --build api`）。
+
 `chain_cursors` 初始行为 `last_block = 0`。若首次 tick 时游标仍为 0 且未配置 `BSC_START_BLOCK`，监听器会从区块 1 开始查询，RPC 区间巨大（可能直接超时/限流）。**任选一种方式**：
 
 ### 方式 A（推荐）：首次启动前设置 `BSC_START_BLOCK`
@@ -195,18 +205,20 @@ curl -fsS -o /dev/null -w '%{http_code}\n' "https://$(grep '^DOMAIN=' .env.produ
 ### 方式 B：启动后手工初始化游标
 
 ```bash
-# 先停止 api，避免首 tick 已经开扫
+# 确保 api 未启动（如已启动，先 stop，避免首 tick 已经开扫）
 docker compose --env-file .env.production -f docker-compose.prod.yml stop api
 
 # 用上面的方式取得 BLOCK 后（替换 <BLOCK>），写库：
+# last_block 语义为「已处理到的最后一个块」，下一 tick 从 last_block + 1 开始；
+# 因此写 BLOCK - 1，保证 BLOCK 本身也会被扫描。
 docker compose --env-file .env.production -f docker-compose.prod.yml exec -T postgres \
-  psql -U xwh -d xwh -c "UPDATE chain_cursors SET last_block = <BLOCK> WHERE id = 'bsc';"
+  psql -U xwh -d xwh -c "UPDATE chain_cursors SET last_block = <BLOCK> - 1 WHERE id = 'bsc';"
 
 docker compose --env-file .env.production -f docker-compose.prod.yml start api
 ```
 
 > 若修改过 `DB_USERNAME` / `DB_DATABASE`，同步替换 `psql -U` / `-d` 参数。
-> 校验：`SELECT * FROM chain_cursors;` 的 `last_block` 应接近当前链头。
+> 校验：`SELECT * FROM chain_cursors;` 的 `last_block` 应略低于当前链头（下一 tick 会补齐）。
 
 ---
 

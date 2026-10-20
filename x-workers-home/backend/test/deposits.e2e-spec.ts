@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   INestApplication,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -375,6 +376,55 @@ describe('BSC 充值监听 e2e（FakeChainProvider）', () => {
     });
   });
 
+  it('DEPOSIT_MIN_CONFIRMATIONS 为空 → 回退 15（不再把空串当 0）', async () => {
+    fakeChain.latestBlock = 1000;
+    fakeChain.transfers = [];
+
+    const previous = process.env.DEPOSIT_MIN_CONFIRMATIONS;
+    process.env.DEPOSIT_MIN_CONFIRMATIONS = '';
+    try {
+      await watcher.tick();
+    } finally {
+      if (previous === undefined) delete process.env.DEPOSIT_MIN_CONFIRMATIONS;
+      else process.env.DEPOSIT_MIN_CONFIRMATIONS = previous;
+    }
+
+    expect(fakeChain.queries).toEqual([
+      { to: platformWallet(), fromBlock: 1, toBlock: 985 },
+    ]);
+    expect(await cursorBlock()).toBe(985n);
+  });
+
+  it('BSC_START_BLOCK 非法 → 忽略且只 warn 一次', async () => {
+    fakeChain.latestBlock = 1000;
+    fakeChain.transfers = [];
+    const warn = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
+
+    const previous = process.env.BSC_START_BLOCK;
+    process.env.BSC_START_BLOCK = 'not-a-number';
+    let calls: unknown[][] = [];
+    try {
+      await watcher.tick();
+      expect(fakeChain.queries).toHaveLength(1);
+      // 回拨游标模拟重启后再 tick，确认不会每 tick 重复刷日志
+      await ds.query(`UPDATE "chain_cursors" SET "last_block" = 0 WHERE "id" = 'bsc'`);
+      await watcher.tick();
+    } finally {
+      if (previous === undefined) delete process.env.BSC_START_BLOCK;
+      else process.env.BSC_START_BLOCK = previous;
+      // mockRestore 会清空 mock.calls，先快照。
+      calls = warn.mock.calls.map((call) => [...call]);
+      warn.mockRestore();
+    }
+
+    const startBlockWarnings = calls.filter((call) =>
+      String(call[0]).includes('BSC_START_BLOCK'),
+    );
+    expect(startBlockWarnings).toHaveLength(1);
+  });
+
   it('provider 抛错 → tick 不崩、cursor 不前进', async () => {
     const user = await makeUser();
     fakeChain.latestBlock = 1000;
@@ -432,6 +482,38 @@ describe('BSC 充值监听 e2e（FakeChainProvider）', () => {
     await expect(depositsService.claimTo(randomUUID(), user.id)).rejects.toBeInstanceOf(
       NotFoundException,
     );
+  });
+
+  it('GET /api/deposits/address 公开返回平台收款地址（小写）', async () => {
+    const res = await request(server()).get('/api/deposits/address').expect(200);
+    expect(res.body).toEqual({
+      address: platformWallet(),
+      minDepositXm: '10',
+      chain: 'BSC',
+      token: 'USDT-BEP20',
+    });
+    expect(res.body.address).toMatch(/^0x[0-9a-f]{40}$/);
+    expect(res.body.address).not.toMatch(/^0x0{40}$/);
+  });
+
+  it('GET /api/deposits/address：缺失 / 零地址 → 503 中文错误（fail-closed）', async () => {
+    const previous = process.env.PLATFORM_WALLET_ADDRESS;
+    try {
+      delete process.env.PLATFORM_WALLET_ADDRESS;
+      let res = await request(server()).get('/api/deposits/address').expect(503);
+      expect(res.body.message).toContain('充值通道未配置');
+
+      process.env.PLATFORM_WALLET_ADDRESS = `0x${'0'.repeat(40)}`;
+      res = await request(server()).get('/api/deposits/address').expect(503);
+      expect(res.body.message).toContain('充值通道未配置');
+
+      process.env.PLATFORM_WALLET_ADDRESS = 'not-an-address';
+      res = await request(server()).get('/api/deposits/address').expect(503);
+      expect(res.body.message).toContain('充值通道未配置');
+    } finally {
+      if (previous === undefined) delete process.env.PLATFORM_WALLET_ADDRESS;
+      else process.env.PLATFORM_WALLET_ADDRESS = previous;
+    }
   });
 
   it('GET /api/deposits/mine 仅返回本人记录（新块在前），未登录 401', async () => {

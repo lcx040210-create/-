@@ -39,6 +39,14 @@ interface DepositRecord {
   createdAt: string;
 }
 
+/** 后端公开端点 /deposits/address：平台收款地址（未配置时 503）。 */
+interface DepositAddress {
+  address: string;
+  minDepositXm: string;
+  chain: string;
+  token: string;
+}
+
 type WithdrawalStatus = 'pending' | 'approved' | 'paid' | 'rejected';
 
 interface WithdrawalRecord {
@@ -122,6 +130,23 @@ export default function WalletPage() {
   const [ledger, setLedger] = useState<LedgerMineView | null>(null);
   const [deposits, setDeposits] = useState<DepositRecord[]>([]);
   const [withdrawals, setWithdrawals] = useState<WithdrawalRecord[]>([]);
+  const [depositAddress, setDepositAddress] = useState<DepositAddress | null>(null);
+  const [depositAddressError, setDepositAddressError] = useState('');
+  const [depositAddressLoading, setDepositAddressLoading] = useState(true);
+
+  /** 收款地址独立加载：503（通道未配置）只影响充值面板，不拖垮整页。 */
+  const loadDepositAddress = useCallback(async () => {
+    try {
+      const { data } = await api.get<DepositAddress>('/deposits/address');
+      setDepositAddress(data);
+      setDepositAddressError('');
+    } catch (err) {
+      setDepositAddress(null);
+      setDepositAddressError(errorMessage(err, '充值通道未配置，请联系管理员'));
+    } finally {
+      setDepositAddressLoading(false);
+    }
+  }, []);
 
   const loadAll = useCallback(async () => {
     const [meRes, ledgerRes, depositRes, withdrawalRes] = await Promise.all([
@@ -129,12 +154,13 @@ export default function WalletPage() {
       api.get<LedgerMineView>('/ledger/mine'),
       api.get<DepositRecord[]>('/deposits/mine'),
       api.get<WithdrawalRecord[]>('/withdrawals/mine'),
+      loadDepositAddress(),
     ]);
     setMe(meRes.data);
     setLedger(ledgerRes.data);
     setDeposits(depositRes.data ?? []);
     setWithdrawals(withdrawalRes.data ?? []);
-  }, []);
+  }, [loadDepositAddress]);
 
   useEffect(() => {
     if (!getAccessToken()) {
@@ -206,7 +232,16 @@ export default function WalletPage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <DepositPanel address={me?.address ?? null} deposits={deposits} />
+        <DepositPanel
+          address={depositAddress?.address ?? null}
+          loading={depositAddressLoading}
+          error={depositAddressError}
+          minDepositXm={depositAddress?.minDepositXm ?? '10'}
+          chain={depositAddress?.chain ?? 'BSC'}
+          token={depositAddress?.token ?? 'USDT-BEP20'}
+          boundAddress={me?.address ?? null}
+          deposits={deposits}
+        />
         <WithdrawPanel
           availableXm={ledger?.availableXm ?? '0'}
           records={withdrawals}
@@ -264,9 +299,21 @@ export default function WalletPage() {
 
 function DepositPanel({
   address,
+  loading,
+  error,
+  minDepositXm,
+  chain,
+  token,
+  boundAddress,
   deposits,
 }: {
   address: string | null;
+  loading: boolean;
+  error: string;
+  minDepositXm: string;
+  chain: string;
+  token: string;
+  boundAddress: string | null;
   deposits: DepositRecord[];
 }) {
   const [copied, setCopied] = useState(false);
@@ -287,30 +334,43 @@ function DepositPanel({
       <div>
         <h2 className="text-base font-semibold text-slate-900">充值</h2>
         <p className="mt-1 text-xs text-slate-500">
-          仅从绑定钱包转 BSC USDT(BEP20)，1:1 到账，最低 10 U。
+          仅从绑定钱包转 {chain} {token}，1:1 到账，最低 {minDepositXm} U。
         </p>
       </div>
 
-      <div className="flex flex-col items-start gap-4 sm:flex-row">
-        {address ? (
+      {error ? (
+        <div className="alert-error">{error}</div>
+      ) : loading ? (
+        <p className="text-sm text-slate-500">正在获取平台收款地址…</p>
+      ) : address ? (
+        <div className="flex flex-col items-start gap-4 sm:flex-row">
           <div className="rounded-xl border border-slate-200 bg-white p-3">
             <QRCodeSVG value={address} size={132} level="M" />
           </div>
-        ) : null}
-        <div className="min-w-0 flex-1 space-y-2">
-          <p className="text-xs text-slate-500">绑定钱包地址</p>
-          <p className="break-all rounded-lg bg-slate-50 px-3 py-2 font-mono text-xs text-slate-800">
-            {address ?? '未绑定钱包'}
-          </p>
-          {address ? (
+          <div className="min-w-0 flex-1 space-y-2">
+            <p className="text-xs text-slate-500">平台收款地址（BSC USDT-BEP20）</p>
+            <p className="break-all rounded-lg bg-slate-50 px-3 py-2 font-mono text-xs text-slate-800">
+              {address}
+            </p>
             <button type="button" className="btn-secondary py-1" onClick={() => void copyAddress()}>
               {copied ? '已复制' : '复制地址'}
             </button>
-          ) : null}
-          <p className="text-xs leading-5 text-slate-500">
-            请务必使用当前绑定的钱包转入；其他地址转入可能无法自动匹配入账。
-          </p>
+          </div>
         </div>
+      ) : (
+        <p className="text-sm text-slate-500">暂未获取到平台收款地址。</p>
+      )}
+
+      <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600">
+        <p>
+          你的绑定钱包：
+          <span className="ml-1 break-all font-mono text-slate-800">
+            {boundAddress ?? '未绑定钱包'}
+          </span>
+        </p>
+        <p className="mt-1 text-amber-700">
+          必须从此绑定钱包转出；其他地址转入可能无法自动匹配入账。
+        </p>
       </div>
 
       <div>

@@ -423,6 +423,8 @@ describe('Admin e2e（登录/守卫、审核队列、抽查与罚则）', () => 
 
   it('提现审核：approve → paid（冻结出账）；reject 退回可用；每步落审计', async () => {
     const user = await makeUser();
+    // 提现要求双绑齐备（active 用户 + active X 绑定）。
+    await bindX(user.id);
     const token = await signToken(user);
     await fund(user.id, 300n * XM);
 

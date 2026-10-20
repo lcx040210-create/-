@@ -10,6 +10,7 @@ import request from 'supertest';
 import { DataSource, In } from 'typeorm';
 import { AppModule } from '../src/app.module';
 import { BindingChange } from '../src/bindings/binding-change.entity';
+import { XBinding } from '../src/bindings/x-binding.entity';
 import { configureApp } from '../src/bootstrap';
 import { MICRO } from '../src/common/money';
 import { PLATFORM_ACCOUNTS } from '../src/database/migrations/1700000003000-ledger';
@@ -42,15 +43,28 @@ describe('提现 e2e（规则校验 + 立即冻结 + 人工审核流）', () => 
   async function makeUser(
     address: string = randomAddress(),
     role: 'user' | 'admin' = 'user',
+    opts: { status?: string; xBinding?: boolean } = {},
   ): Promise<User> {
     const user = await ds.getRepository(User).save(
       ds.getRepository(User).create({
         address: address.toLowerCase(),
-        status: 'active',
+        status: opts.status ?? 'active',
         role,
       }),
     );
     createdUserIds.push(user.id);
+    if (opts.xBinding !== false) {
+      await ds.getRepository(XBinding).save(
+        ds.getRepository(XBinding).create({
+          userId: user.id,
+          // handle 唯一且 ≤16 字符；与用户 id 绑定避免用例间冲突
+          handle: `u${randomUUID().replace(/-/g, '').slice(0, 12)}`,
+          code: 'XWH-TEST',
+          status: 'active',
+          verifiedAt: new Date(),
+        }),
+      );
+    }
     return user;
   }
 
@@ -128,6 +142,7 @@ describe('提现 e2e（规则校验 + 立即冻结 + 人工审核流）', () => 
       if (createdUserIds.length) {
         await ds.getRepository(Withdrawal).delete({ userId: In(createdUserIds) });
         await ds.getRepository(BindingChange).delete({ userId: In(createdUserIds) });
+        await ds.getRepository(XBinding).delete({ userId: In(createdUserIds) });
         const accounts = await ds
           .getRepository(Account)
           .find({ where: { ownerUserId: In(createdUserIds) } });
@@ -456,7 +471,7 @@ describe('提现 e2e（规则校验 + 立即冻结 + 人工审核流）', () => 
     expect(mine.body[0]).toMatchObject({ status: 'paid', isFirst: false });
   });
 
-  it('存在未生效的钱包改绑 → 400（X 改绑不拦）', async () => {
+  it('存在未生效的钱包或 X 改绑 → 均 400', async () => {
     const user = await makeUser();
     await fund(user.id, 100n * XM);
     const token = await signToken(user);
@@ -482,10 +497,50 @@ describe('提现 e2e（规则校验 + 立即冻结 + 人工审核流）', () => 
       frozen: 0n,
     });
 
-    // X 改绑不影响提现
+    // 双绑齐备 + 改绑冷静期：X 改绑同样拦截（不限 kind）
     change.kind = 'x';
     await ds.getRepository(BindingChange).save(change);
-    await requestWithdrawal(token, '50').expect(201);
+    const blockedByX = await requestWithdrawal(token, '50').expect(400);
+    expect(blockedByX.body.message).toContain('改绑');
+    expect(
+      await ds.getRepository(Withdrawal).count({ where: { userId: user.id } }),
+    ).toBe(0);
+    expect(await balancesOf(user.id)).toEqual({
+      available: 100n * XM,
+      frozen: 0n,
+    });
+  });
+
+  it('账号非 active（pending_x_binding）→ 400，无资金变动', async () => {
+    const user = await makeUser(undefined, 'user', { status: 'pending_x_binding' });
+    await fund(user.id, 100n * XM);
+    const token = await signToken(user);
+
+    const res = await requestWithdrawal(token, '50').expect(400);
+    expect(res.body.message).toContain('激活');
+    expect(
+      await ds.getRepository(Withdrawal).count({ where: { userId: user.id } }),
+    ).toBe(0);
+    expect(await balancesOf(user.id)).toEqual({
+      available: 100n * XM,
+      frozen: 0n,
+    });
+  });
+
+  it('无 X 绑定 → 400「请先完成 X 绑定」，无资金变动', async () => {
+    const user = await makeUser(undefined, 'user', { xBinding: false });
+    await fund(user.id, 100n * XM);
+    const token = await signToken(user);
+
+    const res = await requestWithdrawal(token, '50').expect(400);
+    expect(res.body.message).toBe('请先完成 X 绑定');
+    expect(
+      await ds.getRepository(Withdrawal).count({ where: { userId: user.id } }),
+    ).toBe(0);
+    expect(await balancesOf(user.id)).toEqual({
+      available: 100n * XM,
+      frozen: 0n,
+    });
   });
 
   it('未绑定 / 非法绑定钱包地址 → 400', async () => {

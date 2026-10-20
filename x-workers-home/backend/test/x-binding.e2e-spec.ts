@@ -310,7 +310,21 @@ describe('X binding + scheduler + notifications + binding changes (e2e)', () => 
     const { wallet, token, userId } = await registerUser();
     const newWallet = Wallet.createRandom();
 
-    const message = buildWalletChangeMessage(wallet.address, newWallet.address);
+    // 用户侧入口：先通过 API 取到与签名校验完全一致的消息，再签名提交。
+    await request(server())
+      .get('/api/bindings/wallet/change/message')
+      .query({ newAddress: newWallet.address })
+      .expect(401);
+
+    const messageRes = await request(server())
+      .get('/api/bindings/wallet/change/message')
+      .set(auth(token))
+      .query({ newAddress: newWallet.address })
+      .expect(200);
+    expect(messageRes.body).toEqual({
+      message: buildWalletChangeMessage(wallet.address, newWallet.address),
+    });
+    const message = messageRes.body.message;
     const signature = await newWallet.signMessage(message);
 
     const changeRes = await request(server())

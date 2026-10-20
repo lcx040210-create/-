@@ -17,6 +17,7 @@ import { LedgerService } from '../src/ledger/ledger.service';
 import { Referral } from '../src/referral/referral.entity';
 import { ReferralService, generateRefCode } from '../src/referral/referral.service';
 import { User } from '../src/users/user.entity';
+import { XBinding } from '../src/bindings/x-binding.entity';
 import { Withdrawal } from '../src/withdrawals/withdrawal.entity';
 import { WithdrawalsService } from '../src/withdrawals/withdrawals.service';
 
@@ -55,6 +56,19 @@ describe('邀请返佣 e2e（20/30/40 档位 + 手续费钩子）', () => {
     );
     createdUserIds.push(user.id);
     return user;
+  }
+
+  /** 提现要求双绑齐备：给用户补一条 active X 绑定。 */
+  async function bindX(userId: string): Promise<void> {
+    await ds.getRepository(XBinding).save(
+      ds.getRepository(XBinding).create({
+        userId,
+        handle: `r${randomUUID().replace(/-/g, '').slice(0, 12)}`,
+        code: 'XWH-TEST',
+        status: 'active',
+        verifiedAt: new Date(),
+      }),
+    );
   }
 
   /** 建邀请关系行（默认被邀人 active）。 */
@@ -192,6 +206,7 @@ describe('邀请返佣 e2e（20/30/40 档位 + 手续费钩子）', () => {
       if (createdUserIds.length) {
         await ds.getRepository(Withdrawal).delete({ userId: In(createdUserIds) });
         await ds.getRepository(BindingChange).delete({ userId: In(createdUserIds) });
+        await ds.getRepository(XBinding).delete({ userId: In(createdUserIds) });
         await ds
           .getRepository(RefreshToken)
           .delete({ userId: In(createdUserIds) });
@@ -346,6 +361,7 @@ describe('邀请返佣 e2e（20/30/40 档位 + 手续费钩子）', () => {
 
     const referrer = await makeUser();
     const invitee = await bindRow(referrer, 'active');
+    await bindX(invitee.id);
     const admin = await makeUser();
     await fund(invitee.id, 100n * XM);
     const token = await signToken(invitee);
@@ -376,6 +392,8 @@ describe('邀请返佣 e2e（20/30/40 档位 + 手续费钩子）', () => {
 
   it('无邀请人 → onFeeEvent / markPaid 均 no-op 且不报错', async () => {
     const user = await makeUser();
+    // 提现要求双绑齐备（active 用户 + active X 绑定）。
+    await bindX(user.id);
     const before = await availableOf(user.id);
 
     await expect(

@@ -4,6 +4,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { formatUnits } from 'ethers';
 import { DataSource, EntityManager, Repository } from 'typeorm';
 import { fromWei18 } from '../common/money';
+import {
+  DEFAULT_DEPOSIT_MIN_CONFIRMATIONS,
+  parseDepositMinConfirmations,
+} from '../config/env.validation';
 import { LedgerService } from '../ledger/ledger.service';
 import { User } from '../users/user.entity';
 import { ChainCursor } from './chain-cursor.entity';
@@ -12,7 +16,7 @@ import { Deposit } from './deposit.entity';
 
 export const DEPOSIT_WATCH_INTERVAL_MS = 30_000;
 export const BSC_CURSOR_ID = 'bsc';
-export const DEFAULT_DEPOSIT_MIN_CONFIRMATIONS = 15;
+export { DEFAULT_DEPOSIT_MIN_CONFIRMATIONS };
 
 /**
  * 每 30s 扫描平台收款地址的 USDT(BEP20) 转入：
@@ -26,6 +30,7 @@ export class BscWatcherService {
   private readonly logger = new Logger(BscWatcherService.name);
   private ticking = false;
   private warnedAboutZeroCursor = false;
+  private warnedAboutInvalidStartBlock = false;
 
   constructor(
     @Inject(CHAIN_PROVIDER) private readonly chain: ChainProvider,
@@ -145,11 +150,11 @@ export class BscWatcherService {
   }
 
   private minConfirmations(): number {
-    const raw = process.env.DEPOSIT_MIN_CONFIRMATIONS;
-    const parsed = raw === undefined ? NaN : Number(raw);
-    return Number.isInteger(parsed) && parsed >= 0
-      ? parsed
-      : DEFAULT_DEPOSIT_MIN_CONFIRMATIONS;
+    // 空串 / NaN / <=0 一律回退（validateEnv 已在启动时把非法值写回默认值）。
+    return (
+      parseDepositMinConfirmations(process.env.DEPOSIT_MIN_CONFIRMATIONS) ??
+      DEFAULT_DEPOSIT_MIN_CONFIRMATIONS
+    );
   }
 
   /**
@@ -161,7 +166,11 @@ export class BscWatcherService {
     if (!raw) return null;
     const parsed = Number(raw);
     if (!Number.isInteger(parsed) || parsed < 0) {
-      this.logger.warn(`BSC_START_BLOCK 非法（"${raw}"），已忽略`);
+      // 每 30s tick 都会走到这里；只告警一次，避免刷日志。
+      if (!this.warnedAboutInvalidStartBlock) {
+        this.warnedAboutInvalidStartBlock = true;
+        this.logger.warn(`BSC_START_BLOCK 非法（"${raw}"），已忽略`);
+      }
       return null;
     }
     return parsed > 0 ? parsed : null;

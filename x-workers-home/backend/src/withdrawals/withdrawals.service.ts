@@ -87,10 +87,18 @@ export class WithdrawalsService {
         throw new UnauthorizedException('用户不存在');
       }
 
-      await this.assertCooldown(tx, userId);
-      if (await this.bindings.hasPendingChange(userId, 'wallet', tx)) {
-        throw new BadRequestException('存在未生效的钱包改绑申请，暂不可提现');
+      // 提现风控：账号 active + X 绑定 active（双绑齐备）+ 无任何待生效改绑。
+      if (user.status !== 'active') {
+        throw new BadRequestException('账号未激活，暂不可提现');
       }
+      if (!(await this.bindings.hasActiveXBinding(userId, tx))) {
+        throw new BadRequestException('请先完成 X 绑定');
+      }
+      if (await this.bindings.hasPendingChange(userId, undefined, tx)) {
+        throw new BadRequestException('存在未生效的改绑申请，暂不可提现');
+      }
+
+      await this.assertCooldown(tx, userId);
       if (!WALLET_PATTERN.test(user.address ?? '')) {
         throw new BadRequestException('绑定钱包地址无效，请重新绑定钱包');
       }

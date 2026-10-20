@@ -12,8 +12,9 @@ import {
 import Countdown from '@/components/Countdown';
 import RatingBadge from '@/components/RatingBadge';
 import Stars from '@/components/Stars';
+import { ConfirmDialog } from '@/components/admin/ui';
 import api, { errorMessage, getAccessToken } from '@/lib/api';
-import { feeOf, formatXm, MICRO, parseXm } from '@/lib/format';
+import { feeOf, formatXm, MICRO, parseXm, payoutOf } from '@/lib/format';
 import {
   formatDateTime,
   ORDER_STATUS_LABEL,
@@ -945,7 +946,13 @@ function MyOrderCard({
       ) : (
         <ul className="divide-y divide-slate-100 border-t border-slate-100">
           {order.slots.map((slot) => (
-            <MerchantSlotRow key={slot.id} slot={slot} onChanged={onChanged} />
+            <MerchantSlotRow
+              key={slot.id}
+              slot={slot}
+              priceXm={order.priceXm}
+              payoutXm={payoutOf(order.priceXm)}
+              onChanged={onChanged}
+            />
           ))}
         </ul>
       )}
@@ -957,15 +964,20 @@ const DELETION_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 function MerchantSlotRow({
   slot,
+  priceXm,
+  payoutXm,
   onChanged,
 }: {
   slot: MyOrderSlot;
+  priceXm: string;
+  payoutXm: string;
   onChanged: (message: string) => Promise<void>;
 }) {
   const [panel, setPanel] = useState<'none' | 'dispute' | 'report' | 'review'>('none');
   const [statement, setStatement] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const settlementAgeMs = slot.settledAt
     ? Date.now() - new Date(slot.settledAt).getTime()
@@ -979,8 +991,10 @@ function MerchantSlotRow({
     setError('');
     try {
       await api.post(`/slots/${slot.id}/confirm`);
+      setConfirmOpen(false);
       await onChanged('已确认放款，结算处理中');
     } catch (err) {
+      setConfirmOpen(false);
       setError(errorMessage(err, '确认放款失败'));
     } finally {
       setBusy(false);
@@ -1078,7 +1092,10 @@ function MerchantSlotRow({
             <button
               type="button"
               className="btn-primary py-1"
-              onClick={() => void handleConfirm()}
+              onClick={() => {
+                setError('');
+                setConfirmOpen(true);
+              }}
               disabled={busy}
             >
               确认放款
@@ -1182,6 +1199,30 @@ function MerchantSlotRow({
       {panel === 'review' ? (
         <ReviewForm slotId={slot.id} onChanged={onChanged} />
       ) : null}
+
+      <ConfirmDialog
+        open={confirmOpen}
+        title="确认放款？"
+        danger
+        busy={busy}
+        confirmLabel="确认放款"
+        onCancel={() => {
+          if (!busy) setConfirmOpen(false);
+        }}
+        onConfirm={() => void handleConfirm()}
+        description={
+          <div className="space-y-1">
+            <p>
+              该名额金额 <strong>{priceXm} XM</strong>，接单方到手{' '}
+              <strong>{payoutXm} XM</strong>。
+            </p>
+            <p className="text-amber-700">
+              确认后立即结算，不可撤销。请先核对交付内容与核验结果。
+            </p>
+            {error ? <div className="alert-error">{error}</div> : null}
+          </div>
+        }
+      />
 
       {error ? <p className="text-sm text-rose-700">{error}</p> : null}
     </li>

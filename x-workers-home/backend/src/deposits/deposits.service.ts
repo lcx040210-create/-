@@ -1,7 +1,13 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { formatXm } from '../common/money';
+import { isNonZeroEvmAddress } from '../config/env.validation';
 import { LedgerService } from '../ledger/ledger.service';
 import { User } from '../users/user.entity';
 import { Deposit } from './deposit.entity';
@@ -29,6 +35,28 @@ export class DepositsService {
     private readonly dataSource: DataSource,
     private readonly ledger: LedgerService,
   ) {}
+
+  /**
+   * 平台收款地址（公开）。收款通道未配置 / 非法 / 零地址时 fail-closed：
+   * 返回 503，前端不得把用户绑定钱包当成收款地址展示。
+   */
+  platformAddress(): {
+    address: string;
+    minDepositXm: string;
+    chain: string;
+    token: string;
+  } {
+    const address = (process.env.PLATFORM_WALLET_ADDRESS ?? '').trim().toLowerCase();
+    if (!isNonZeroEvmAddress(address)) {
+      throw new ServiceUnavailableException('充值通道未配置，请联系管理员');
+    }
+    return {
+      address,
+      minDepositXm: '10',
+      chain: 'BSC',
+      token: 'USDT-BEP20',
+    };
+  }
 
   /** 本人充值记录，按块高倒序（同块按 logIndex 倒序）。 */
   async listMine(userId: string): Promise<DepositView[]> {

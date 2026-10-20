@@ -208,6 +208,28 @@ export class BindingsService implements OnModuleInit {
     };
   }
 
+  /**
+   * 用户侧钱包改绑签名消息：与 requestWalletChange 使用同一构造，
+   * 保证前端签名 / 后端 verifyMessage 的消息完全一致。
+   */
+  async walletChangeMessage(
+    userId: string,
+    rawNewAddress: string,
+  ): Promise<{ message: string }> {
+    if (!isAddress(rawNewAddress)) {
+      throw new BadRequestException('新地址格式不正确');
+    }
+    const user = await this.users.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new UnauthorizedException('用户不存在');
+    }
+    const newAddress = rawNewAddress.toLowerCase();
+    if (user.address.toLowerCase() === newAddress) {
+      throw new BadRequestException('新地址与当前地址相同');
+    }
+    return { message: buildWalletChangeMessage(user.address, newAddress) };
+  }
+
   async requestWalletChange(userId: string, rawNewAddress: string, signature: string) {
     if (!isAddress(rawNewAddress)) {
       throw new BadRequestException('新地址格式不正确');
@@ -271,6 +293,15 @@ export class BindingsService implements OnModuleInit {
       order: { createdAt: 'DESC', id: 'DESC' },
     });
     return rows.map((row) => this.toChangeView(row));
+  }
+
+  /** 提现风控：必须存在 active 状态的 X 绑定（双绑齐备）。 */
+  async hasActiveXBinding(
+    userId: string,
+    manager?: EntityManager,
+  ): Promise<boolean> {
+    const repo = manager ? manager.getRepository(XBinding) : this.xBindings;
+    return (await repo.count({ where: { userId, status: 'active' } })) > 0;
   }
 
   /**

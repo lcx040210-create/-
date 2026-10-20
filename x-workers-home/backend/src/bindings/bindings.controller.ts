@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
 import { AuthUser, CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { BindingsService } from './bindings.service';
@@ -24,6 +24,14 @@ export class BindingsController {
   @Post('x/change')
   changeX(@CurrentUser() user: AuthUser, @Body() dto: XChangeDto) {
     return this.bindings.requestXChange(user.userId, dto.handle);
+  }
+
+  @Get('wallet/change/message')
+  walletChangeMessage(
+    @CurrentUser() user: AuthUser,
+    @Query('newAddress') newAddress: string,
+  ) {
+    return this.bindings.walletChangeMessage(user.userId, newAddress ?? '');
   }
 
   @Post('wallet/change')
