@@ -17,6 +17,7 @@ import { ReviewsModule } from './reviews/reviews.module';
 import { SettlementModule } from './settlement/settlement.module';
 import { SlotsModule } from './slots/slots.module';
 import { TermsModule } from './terms/terms.module';
+import { UsersModule } from './users/users.module';
 import { VerificationModule } from './verification/verification.module';
 import { WithdrawalsModule } from './withdrawals/withdrawals.module';
 
@@ -41,6 +42,7 @@ import { WithdrawalsModule } from './withdrawals/withdrawals.module';
     SettlementModule,
     SlotsModule,
     TermsModule,
+    UsersModule,
     VerificationModule,
     WithdrawalsModule,
   ],

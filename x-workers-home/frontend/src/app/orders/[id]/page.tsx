@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { Suspense } from 'react';
+import { Suspense, cache } from 'react';
 import RatingBadge from '@/components/RatingBadge';
 import TakeButton from '@/components/TakeButton';
 import { payoutOf } from '@/lib/format';
@@ -17,12 +17,49 @@ import {
   type OrderType,
   type SlotStatus,
 } from '@/lib/orders';
+import { absoluteUrl } from '@/lib/site';
 
 export const dynamic = 'force-dynamic';
 
-export const metadata: Metadata = {
-  title: '商单详情',
-};
+/** generateMetadata 与页面共享同一次后端请求。 */
+const loadOrder = cache((id: string) => fetchOrderDetail(id));
+
+interface OrderDetailPageProps {
+  params: { id: string };
+}
+
+export async function generateMetadata({
+  params,
+}: OrderDetailPageProps): Promise<Metadata> {
+  try {
+    const order = await loadOrder(params.id);
+    const title = `${order.title} · ${ORDER_TYPE_LABEL[order.type]}商单`;
+    const description = `单价 ${order.priceXm} XM，接单到手 ${payoutOf(
+      order.priceXm,
+    )} XM，剩余 ${order.slotsAvailable}/${order.slotsTotal} 个名额。`;
+    const image = absoluteUrl(`/api/og/order/${order.id}`);
+
+    return {
+      title: order.title,
+      description,
+      openGraph: {
+        type: 'website',
+        title,
+        description,
+        url: absoluteUrl(`/orders/${order.id}`),
+        images: [{ url: image, width: 1200, height: 630, alt: order.title }],
+      },
+      twitter: {
+        card: 'summary_large_image',
+        title,
+        description,
+        images: [image],
+      },
+    };
+  } catch {
+    return { title: '商单详情' };
+  }
+}
 
 const TYPE_STYLES: Record<OrderType, string> = {
   post: 'bg-indigo-50 text-indigo-700 ring-indigo-200',
@@ -46,10 +83,6 @@ const SLOT_STATUS_STYLES: Record<SlotStatus, string> = {
   expired: 'bg-slate-100 text-slate-500 ring-slate-200',
 };
 
-interface OrderDetailPageProps {
-  params: { id: string };
-}
-
 export default function OrderDetailPage({ params }: OrderDetailPageProps) {
   return (
     <Suspense fallback={<DetailLoading />}>
@@ -61,7 +94,7 @@ export default function OrderDetailPage({ params }: OrderDetailPageProps) {
 async function OrderDetail({ id }: { id: string }) {
   let order: OrderDetailView;
   try {
-    order = await fetchOrderDetail(id);
+    order = await loadOrder(id);
   } catch (err) {
     return (
       <div className="space-y-4">
