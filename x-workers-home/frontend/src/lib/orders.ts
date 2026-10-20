@@ -3,7 +3,7 @@
  * 金额字段是十进制 XM 字符串，展示侧一律走 lib/format 的 BigInt 工具。
  */
 
-import { API_BASE_URL } from './api';
+import { fetchApiBaseUrl } from './api';
 
 export type OrderType = 'post' | 'comment' | 'quote';
 export type OrderStatus = 'recruiting' | 'closed' | 'completed';
@@ -166,7 +166,7 @@ export function formatDateTime(value: string | null | undefined): string {
 async function requestJson<T>(path: string): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, { cache: 'no-store' });
+    response = await fetch(`${fetchApiBaseUrl()}${path}`, { cache: 'no-store' });
   } catch {
     throw new Error('无法连接服务器，请确认后端服务已启动后重试');
   }

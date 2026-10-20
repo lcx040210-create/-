@@ -25,6 +25,7 @@ export const DEFAULT_DEPOSIT_MIN_CONFIRMATIONS = 15;
 export class BscWatcherService {
   private readonly logger = new Logger(BscWatcherService.name);
   private ticking = false;
+  private warnedAboutZeroCursor = false;
 
   constructor(
     @Inject(CHAIN_PROVIDER) private readonly chain: ChainProvider,
@@ -69,8 +70,19 @@ export class BscWatcherService {
     const safe = latest - minConfirmations;
     if (safe <= cursor || safe <= 0) return;
 
-    // 区间 (cursor, safe]
-    const fromBlock = Number(cursor) + 1;
+    // 区间 (cursor, safe]；首次启动（cursor=0）可用 BSC_START_BLOCK 指定起点，
+    // 避免从区块 1 开始拉取巨大区间。
+    const startBlock = this.startBlock();
+    if (cursor === 0n && startBlock === null && !this.warnedAboutZeroCursor) {
+      this.warnedAboutZeroCursor = true;
+      this.logger.warn(
+        'chain_cursors.last_block=0 且未设置 BSC_START_BLOCK：将从区块 1 开始扫描，可能造成巨大 RPC 区间。' +
+          '生产环境请在首次启动前初始化游标或设置 BSC_START_BLOCK。',
+      );
+    }
+    const fromBlock = cursor > 0n ? Number(cursor) + 1 : (startBlock ?? 1);
+    // 起点尚未进入安全确认区间（例如刚部署、BSC_START_BLOCK 接近链头）时先等待。
+    if (fromBlock > safe) return;
     const transfers = await this.chain.getUsdtTransfers({
       to: platformWallet,
       fromBlock,
@@ -138,6 +150,21 @@ export class BscWatcherService {
     return Number.isInteger(parsed) && parsed >= 0
       ? parsed
       : DEFAULT_DEPOSIT_MIN_CONFIRMATIONS;
+  }
+
+  /**
+   * 首次扫描起点（含）。仅在 cursor=0 时生效；未设置 / 非法值返回 null（保持现行为）。
+   * 生产部署在 `.env.production` 设置 BSC_START_BLOCK=<部署时当前区块>。
+   */
+  private startBlock(): number | null {
+    const raw = (process.env.BSC_START_BLOCK || '').trim();
+    if (!raw) return null;
+    const parsed = Number(raw);
+    if (!Number.isInteger(parsed) || parsed < 0) {
+      this.logger.warn(`BSC_START_BLOCK 非法（"${raw}"），已忽略`);
+      return null;
+    }
+    return parsed > 0 ? parsed : null;
   }
 
   private platformWallet(): string {

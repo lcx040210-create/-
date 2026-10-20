@@ -5,6 +5,23 @@ export const API_BASE_URL = (
   process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001/api'
 ).replace(/\/+$/, '');
 
+/**
+ * 当前运行环境（浏览器 / Node）下 fetch 应使用的后端 base。
+ *
+ * 生产同源部署时浏览器侧 `NEXT_PUBLIC_API_URL=/api` 走 Caddy；但容器内的服务端
+ * fetch 无法解析相对地址，必须走容器网络（`API_INTERNAL_URL=http://api:4001/api`）。
+ * API_INTERNAL_URL 用下标读取，避免被 Next 在构建期静态内联，保证 standalone
+ * 镜像能在运行时读到容器编排注入的值；客户端 axios 仍只用 NEXT_PUBLIC_API_URL。
+ */
+export function fetchApiBaseUrl(): string {
+  if (typeof window !== 'undefined') return API_BASE_URL;
+  return (
+    process.env['API_INTERNAL_URL'] ||
+    process.env.NEXT_PUBLIC_API_URL ||
+    'http://localhost:4001/api'
+  ).replace(/\/+$/, '');
+}
+
 const ACCESS_TOKEN_KEY = 'accessToken';
 const REFRESH_TOKEN_KEY = 'refreshToken';
 

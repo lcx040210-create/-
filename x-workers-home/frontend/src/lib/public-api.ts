@@ -3,9 +3,7 @@
  * 后端公开端点无需 JWT；这里不使用共享 axios，避免 401 拦截器把匿名访问者踢去登录。
  */
 
-import { API_BASE_URL } from './api';
-
-export const PUBLIC_API_BASE = API_BASE_URL.replace(/\/+$/, '');
+import { fetchApiBaseUrl } from './api';
 
 export class PublicApiError extends Error {
   /** HTTP 状态码；网络不可达时为 0。 */
@@ -24,7 +22,7 @@ export async function getPublicJson<T>(
 ): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(`${PUBLIC_API_BASE}${path}`, { cache: 'no-store' });
+    response = await fetch(`${fetchApiBaseUrl()}${path}`, { cache: 'no-store' });
   } catch {
     throw new PublicApiError('无法连接服务器，请确认后端服务已启动', 0);
   }

@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { errorMessage } from './api';
+import { afterEach, describe, expect, it } from 'vitest';
+import { API_BASE_URL, errorMessage, fetchApiBaseUrl } from './api';
 
 describe('errorMessage（管理端错误提示中文兜底）', () => {
   it('优先展示后端中文 message', () => {
@@ -33,5 +33,25 @@ describe('errorMessage（管理端错误提示中文兜底）', () => {
     expect(errorMessage({ isAxiosError: true }, '操作失败')).toBe(
       '网络错误，请确认后端服务已启动',
     );
+  });
+});
+
+describe('fetchApiBaseUrl（SSR 与浏览器地址分裂）', () => {
+  const original = process.env.API_INTERNAL_URL;
+
+  afterEach(() => {
+    if (original === undefined) delete process.env.API_INTERNAL_URL;
+    else process.env.API_INTERNAL_URL = original;
+  });
+
+  it('服务端优先使用容器内 API_INTERNAL_URL（去掉尾斜杠）', () => {
+    process.env.API_INTERNAL_URL = 'http://api:4001/api/';
+    // vitest 默认 node 环境没有 window → 走服务端分支
+    expect(fetchApiBaseUrl()).toBe('http://api:4001/api');
+  });
+
+  it('服务端未配置内部地址时回落到 NEXT_PUBLIC_API_URL', () => {
+    delete process.env.API_INTERNAL_URL;
+    expect(fetchApiBaseUrl()).toBe(API_BASE_URL);
   });
 });

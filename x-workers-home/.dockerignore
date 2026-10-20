@@ -1,0 +1,13 @@
+# 构建上下文为仓库根目录；排除本地产物与密钥，避免镜像层膨胀/泄密。
+.git
+.gitignore
+**/node_modules
+**/dist
+**/.next
+**/coverage
+**/*.log
+**/.env
+**/.env.*
+!**/*.example
+backups
+docs

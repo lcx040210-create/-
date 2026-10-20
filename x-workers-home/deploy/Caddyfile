@@ -1,0 +1,15 @@
+# DOMAIN 由 docker-compose.prod.yml 注入（例如 xwh.example.com）。
+# Caddy 自动申请并续期 Let's Encrypt 证书；DOMAIN 不含协议前缀。
+{$DOMAIN} {
+	encode gzip zstd
+
+	# 后端 Nest 全局前缀为 /api，原样转发（不去前缀）。
+	handle /api/* {
+		reverse_proxy api:4001
+	}
+
+	# 其余（Next.js 页面、/_next 静态资源、OG 图）走 web。
+	handle {
+		reverse_proxy web:4000
+	}
+}

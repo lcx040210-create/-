@@ -243,6 +243,58 @@ describe('BSC 充值监听 e2e（FakeChainProvider）', () => {
     });
   });
 
+  it('BSC_START_BLOCK：cursor=0 时从指定块开始扫描，不回扫区块 1', async () => {
+    const user = await makeUser();
+    const beforeStart = makeTransfer({
+      from: user.address,
+      amountWei: '1000000000000000000',
+      blockNumber: 899,
+    });
+    const atStart = makeTransfer({
+      from: user.address,
+      amountWei: '2000000000000000000',
+      blockNumber: 900,
+    });
+    fakeChain.latestBlock = 1000;
+    fakeChain.transfers = [beforeStart, atStart];
+
+    const previous = process.env.BSC_START_BLOCK;
+    process.env.BSC_START_BLOCK = '900';
+    try {
+      await watcher.tick();
+    } finally {
+      if (previous === undefined) delete process.env.BSC_START_BLOCK;
+      else process.env.BSC_START_BLOCK = previous;
+    }
+
+    // safe = 985；起点 900（含），不回扫 1..899
+    expect(fakeChain.queries).toEqual([
+      { to: platformWallet(), fromBlock: 900, toBlock: 985 },
+    ]);
+    expect(await cursorBlock()).toBe(985n);
+    expect(await depositOf(beforeStart.txHash)).toBeNull();
+    expect(await depositOf(atStart.txHash)).not.toBeNull();
+    expect(await balanceOf(user.id)).toBe(2_000_000n);
+  });
+
+  it('BSC_START_BLOCK 高于安全块时先等待，不发起查询', async () => {
+    fakeChain.latestBlock = 1000;
+    fakeChain.transfers = [makeTransfer({ blockNumber: 990 })];
+
+    const previous = process.env.BSC_START_BLOCK;
+    process.env.BSC_START_BLOCK = '990';
+    try {
+      await watcher.tick();
+    } finally {
+      if (previous === undefined) delete process.env.BSC_START_BLOCK;
+      else process.env.BSC_START_BLOCK = previous;
+    }
+
+    // safe = 985 < 起点 990：不查询、cursor 保持 0，等待链头推进
+    expect(fakeChain.queries).toEqual([]);
+    expect(await cursorBlock()).toBe(0n);
+  });
+
   it('陌生地址转入 → unmatched，不入账', async () => {
     const totalBefore = await sumAll();
     const transfer = makeTransfer({
