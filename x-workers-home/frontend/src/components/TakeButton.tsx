@@ -1,8 +1,9 @@
 'use client';
 
+import axios from 'axios';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import api, { errorMessage, getAccessToken } from '@/lib/api';
+import api, { API_BASE_URL, errorMessage, getAccessToken } from '@/lib/api';
 import type { MySlotsResponse, OrderStatus, SlotStatus } from '@/lib/orders';
 
 interface TakeButtonProps {
@@ -36,15 +37,22 @@ export default function TakeButton({
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (!getAccessToken()) {
+    const token = getAccessToken();
+    if (!token) {
       setLoggedIn(false);
       return;
     }
     setLoggedIn(true);
 
     let cancelled = false;
-    api
-      .get<MySlotsResponse>('/me/slots')
+    // 公开详情页的“我是否已在本单”探测必须绕过全局 api 实例：
+    // 该实例在 401 且 refresh 失败时会清 token 并强制跳 /login，
+    // 这会让过期登录态的访客一进公开页就被登出。这里用裸 axios
+    // 手动带 Authorization，失败时只降级为匿名视图。
+    axios
+      .get<MySlotsResponse>(`${API_BASE_URL}/me/slots`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
       .then(({ data }) => {
         if (cancelled) return;
         const items = data.items ?? [];
@@ -56,8 +64,17 @@ export default function TakeButton({
           ),
         );
       })
-      .catch(() => {
-        // 查询失败不阻断抢单，最终由后端校验兜底
+      .catch((err) => {
+        if (cancelled) return;
+        const status = axios.isAxiosError(err)
+          ? err.response?.status
+          : undefined;
+        if (status === 401 || status === 403) {
+          // 仅切回匿名视图：不清 token、不跳转；重复抢单由后端兜底。
+          setLoggedIn(false);
+          setMine(false);
+        }
+        // 网络错误等保留当前登录态，不阻断公开浏览与抢单校验。
       });
 
     return () => {
