@@ -55,7 +55,10 @@ export function errorMessage(err: unknown, fallback = '操作失败，请稍后�
     const data = err.response?.data as { message?: string | string[] } | undefined;
     const message = data?.message;
     if (Array.isArray(message)) return message.join('；');
-    if (typeof message === 'string' && message) return message;
+    // Nest 未捕获异常统一返回英文 "Internal server error"：对用户展示中文兜底。
+    if (typeof message === 'string' && message && message !== 'Internal server error') {
+      return message;
+    }
     if (!err.response) return '网络错误，请确认后端服务已启动';
     return fallback;
   }

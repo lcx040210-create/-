@@ -10,6 +10,11 @@
   body {
     @apply bg-slate-50 text-slate-900 antialiased;
   }
+
+  /* 管理后台是运营者工位，使用更宽的工作区（只影响 /admin 子树）。 */
+  main:has(.admin-shell) {
+    max-width: 80rem; /* max-w-7xl */
+  }
 }
 
 @layer components {

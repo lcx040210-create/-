@@ -20,6 +20,9 @@ export default function SiteNav() {
     setLoggedIn(!!getAccessToken());
   }, [pathname]);
 
+  // 管理后台使用独立的运营者工位导航，不展示前台导航。
+  if (pathname.startsWith('/admin')) return null;
+
   return (
     <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur">
       <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
