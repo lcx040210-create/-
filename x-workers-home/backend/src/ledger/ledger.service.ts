@@ -1,6 +1,8 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { EntityManager } from 'typeorm';
+import { InjectRepository } from '@nestjs/typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { InsufficientFundsError, InvalidAmountError } from '../common/errors';
+import { formatXm } from '../common/money';
 import { PLATFORM_ACCOUNTS } from '../database/migrations/1700000003000-ledger';
 import { Account } from './account.entity';
 import { LedgerEntry } from './ledger-entry.entity';
@@ -28,6 +30,30 @@ export type LedgerRef = {
   id: string;
 };
 
+/** 本人流水展示条数上限。 */
+export const LEDGER_MINE_LIMIT = 50;
+
+export interface LedgerMineEntryView {
+  id: string;
+  kind: string;
+  /**
+   * 带符号的金额：优先取可用余额变动；纯冻结/解冻行取冻结余额变动。
+   * 例：充值 +100、发单冻结 -315、提现冻结 -50、任务收入 +95。
+   */
+  amountXm: string;
+  availableDeltaXm: string;
+  frozenDeltaXm: string;
+  refType: string;
+  refId: string;
+  createdAt: Date;
+}
+
+export interface LedgerMineView {
+  availableXm: string;
+  frozenXm: string;
+  entries: LedgerMineEntryView[];
+}
+
 /**
  * 全项目资金唯一入口。所有方法都必须在调用方事务内执行：
  * 锁使用 pessimistic_write（SELECT ... FOR UPDATE），涉及两个账户时按 account.id
@@ -41,6 +67,42 @@ export type LedgerRef = {
  */
 @Injectable()
 export class LedgerService {
+  constructor(
+    @InjectRepository(Account)
+    private readonly accounts: Repository<Account>,
+    @InjectRepository(LedgerEntry)
+    private readonly entries: Repository<LedgerEntry>,
+  ) {}
+
+  /** 本人余额（可用/冻结）+ 最近 50 条本人流水；无账户时返回 0 与空列表。 */
+  async getMine(userId: string): Promise<LedgerMineView> {
+    const account = await this.accounts.findOne({
+      where: { ownerUserId: userId },
+    });
+    const rows = await this.entries.find({
+      where: { userId },
+      order: { createdAt: 'DESC', id: 'DESC' },
+      take: LEDGER_MINE_LIMIT,
+    });
+
+    return {
+      availableXm: formatXm(account?.available ?? 0n),
+      frozenXm: formatXm(account?.frozen ?? 0n),
+      entries: rows.map((row) => ({
+        id: row.id,
+        kind: row.kind,
+        amountXm: formatXm(
+          row.availableDelta !== 0n ? row.availableDelta : row.frozenDelta,
+        ),
+        availableDeltaXm: formatXm(row.availableDelta),
+        frozenDeltaXm: formatXm(row.frozenDelta),
+        refType: row.refType,
+        refId: row.refId,
+        createdAt: row.createdAt,
+      })),
+    };
+  }
+
   /** 取得（必要时创建）账户；平台账户由迁移预置。 */
   async getOrCreateAccount(tx: EntityManager, ref: AccountRef): Promise<Account> {
     if ('platform' in ref) {

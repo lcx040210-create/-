@@ -72,6 +72,35 @@ export interface OrderListResult {
   pageSize: number;
 }
 
+/** 商家本人订单里的名额视图：商家可见同单交付链接与驳回原因。 */
+export interface MyOrderSlotView {
+  id: string;
+  status: OrderSlotStatus;
+  creator: { id: string; nickname: string | null; ratingGrade: string | null };
+  acceptedAt: Date;
+  deliverDeadlineAt: Date;
+  deliveredAt: Date | null;
+  confirmedDeadlineAt: Date | null;
+  settledAt: Date | null;
+  deliveryUrl: string | null;
+  lastReject: Record<string, any> | null;
+  appealRequested: boolean;
+}
+
+export interface MyOrderView {
+  id: string;
+  type: OrderType;
+  title: string;
+  priceXm: string;
+  slotsTotal: number;
+  escrowXm: string;
+  feeEarned: boolean;
+  status: OrderStatus;
+  expiresAt: Date;
+  createdAt: Date;
+  slots: MyOrderSlotView[];
+}
+
 @Injectable()
 export class OrdersService {
   constructor(
@@ -210,6 +239,73 @@ export class OrdersService {
           },
         };
       }),
+    };
+  }
+
+  /**
+   * 商家本人订单列表（全部状态）：附完整名额数据。
+   * 仅按 merchant_user_id 过滤，交付链接只出现在本人订单下，绝不跨商家泄露。
+   */
+  async listMine(userId: string): Promise<{ items: MyOrderView[] }> {
+    const orders = await this.orders.find({
+      where: { merchantUserId: userId },
+      order: { createdAt: 'DESC', id: 'DESC' },
+    });
+    if (orders.length === 0) {
+      return { items: [] };
+    }
+
+    const orderIds = orders.map((order) => order.id);
+    const slotRows = await this.orders.manager.getRepository(OrderSlot).find({
+      where: { orderId: In(orderIds) },
+      order: { createdAt: 'ASC', id: 'ASC' },
+    });
+    const creatorIds = Array.from(
+      new Set(slotRows.map((slot) => slot.creatorUserId)),
+    );
+    const creators = creatorIds.length
+      ? await this.users.findBy({ id: In(creatorIds) })
+      : [];
+    const creatorById = new Map(creators.map((user) => [user.id, user]));
+    const slotsByOrder = new Map<string, MyOrderSlotView[]>();
+    for (const slot of slotRows) {
+      const creator = creatorById.get(slot.creatorUserId);
+      const view: MyOrderSlotView = {
+        id: slot.id,
+        status: slot.status,
+        creator: {
+          id: slot.creatorUserId,
+          nickname: creator?.nickname ?? null,
+          ratingGrade: creator?.ratingGrade ?? null,
+        },
+        acceptedAt: slot.acceptedAt,
+        deliverDeadlineAt: slot.deliverDeadlineAt,
+        deliveredAt: slot.deliveredAt,
+        confirmedDeadlineAt: slot.confirmedDeadlineAt,
+        settledAt: slot.settledAt,
+        deliveryUrl: slot.deliveryUrl,
+        lastReject: slot.lastReject,
+        appealRequested: slot.appealRequested,
+      };
+      const list = slotsByOrder.get(slot.orderId);
+      if (list) list.push(view);
+      else slotsByOrder.set(slot.orderId, [view]);
+    }
+
+    return {
+      items: orders.map((order) => ({
+        id: order.id,
+        type: order.type,
+        title: order.title,
+        priceXm: formatXm(order.priceMicro),
+        slotsTotal: order.slotsTotal,
+        escrowXm: formatXm(order.escrowMicro),
+        feeEarned: order.feeEarned,
+        status: order.status,
+        expiresAt: order.expiresAt,
+        createdAt: order.createdAt,
+        slots: slotsByOrder.get(order.id) ?? [],
+      })),
     };
   }
 
