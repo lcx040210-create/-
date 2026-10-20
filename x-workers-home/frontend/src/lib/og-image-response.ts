@@ -1,32 +1,42 @@
 /**
- * `next/og` 的 ImageResponse 封装（Node runtime）。
+ * `next/og` 的 ImageResponse 异步加载封装（Node runtime）。
  *
- * Next 14.2 内置的 @vercel/og node 包在 Windows 上加载内置字体时使用
- * `fileURLToPath(path.join(import.meta.url, '../font.ttf'))`，path.join 会把
- * `file:///C:/...` 变成 `.\file:\C:\...`，fileURLToPath 随即抛 `Invalid URL`。
- * 这里只在「畸形 file: 路径」出现时做一次兼容修正，合法 file URL 原样交给 Node。
- *
- * 该补丁必须在 require('next/og') 之前生效，因此本模块用运行时 require
- * （webpack 不会静态内联），路由统一从本模块导入 ImageResponse。
+ * 两个目的：
+ * 1. Windows 兼容：Next 14.2 内置的 @vercel/og node 包在加载内置字体时使用
+ *    `fileURLToPath(path.join(import.meta.url, '../font.ttf'))`，path.join 会把
+ *    `file:///C:/...` 变成 `.\file:\C:\...`，fileURLToPath 随即抛 `Invalid URL`。
+ *    这里只在「畸形 file: 路径」出现时做一次兼容修正，合法 file URL 原样交给 Node。
+ * 2. 可被 Next output file tracing 收集：`next/og` 必须用**静态说明符的动态 import**
+ *    加载（运行时 require 不可见，standalone 镜像会丢依赖）。补丁在 import 之前同步执行，
+ *    确保 next/og 模块求值（读取内置字体）时修补已生效。
  */
 
 import { createRequire } from 'module';
 
 declare const __non_webpack_require__: NodeRequire | undefined;
 
-const nodeRequire: NodeRequire =
-  typeof __non_webpack_require__ === 'function'
-    ? __non_webpack_require__
-    : createRequire(import.meta.url);
+type ImageResponseClass = (typeof import('next/og'))['ImageResponse'];
 
 interface PatchedUrlModule {
   fileURLToPath: (input: string | URL) => string;
   __xwhFileUrlPatched?: boolean;
 }
 
-const nodeUrl = nodeRequire('url') as PatchedUrlModule;
+/**
+ * 仅在 Windows 上修补 Node 的 url.fileURLToPath，处理 @vercel/og 产生的
+ * 畸形 `.\file:\C:\...` 输入；合法 file:/// URL 与其他平台不受影响。
+ */
+function patchFileUrlToPathOnWindows(): void {
+  if (process.platform !== 'win32') return;
 
-if (!nodeUrl.__xwhFileUrlPatched) {
+  const nodeRequire: NodeRequire =
+    typeof __non_webpack_require__ === 'function'
+      ? __non_webpack_require__
+      : createRequire(import.meta.url);
+
+  const nodeUrl = nodeRequire('url') as PatchedUrlModule;
+  if (nodeUrl.__xwhFileUrlPatched) return;
+
   const original = nodeUrl.fileURLToPath;
 
   nodeUrl.fileURLToPath = function patchedFileURLToPath(input: string | URL): string {
@@ -46,6 +56,16 @@ if (!nodeUrl.__xwhFileUrlPatched) {
   nodeUrl.__xwhFileUrlPatched = true;
 }
 
-const og = nodeRequire('next/og') as typeof import('next/og');
+let imageResponsePromise: Promise<ImageResponseClass> | null = null;
 
-export const ImageResponse = og.ImageResponse;
+/**
+ * 返回 next/og 的 ImageResponse（进程内单例）。
+ * 静态说明符 `import('next/og')` 可被 @vercel/nft 追踪进 standalone 输出。
+ */
+export function getImageResponse(): Promise<ImageResponseClass> {
+  if (!imageResponsePromise) {
+    patchFileUrlToPathOnWindows();
+    imageResponsePromise = import('next/og').then((mod) => mod.ImageResponse);
+  }
+  return imageResponsePromise;
+}

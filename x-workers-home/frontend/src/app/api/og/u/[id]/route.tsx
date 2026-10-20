@@ -1,4 +1,4 @@
-import { ImageResponse } from '@/lib/og-image-response';
+import { getImageResponse } from '@/lib/og-image-response';
 import {
   OG_HEIGHT,
   OG_WIDTH,
@@ -59,6 +59,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
 
   const fonts = await loadOgFonts();
   const fontFamily = ogFontFamily(fonts);
+  const ImageResponse = await getImageResponse();
 
   const grade = profile.ratingGrade?.toUpperCase() ?? null;
   const gradeColor = grade ? GRADE_COLORS[grade] : undefined;

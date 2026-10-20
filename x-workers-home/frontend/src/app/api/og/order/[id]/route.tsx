@@ -1,5 +1,5 @@
 import { ORDER_TYPE_LABEL, type OrderDetailView } from '@/lib/orders';
-import { ImageResponse } from '@/lib/og-image-response';
+import { getImageResponse } from '@/lib/og-image-response';
 import {
   OG_HEIGHT,
   OG_WIDTH,
@@ -41,6 +41,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
 
   const fonts = await loadOgFonts();
   const fontFamily = ogFontFamily(fonts);
+  const ImageResponse = await getImageResponse();
 
   const typeLabel = ORDER_TYPE_LABEL[order.type] ?? order.type;
   const stats: Stat[] = [
