@@ -4,6 +4,10 @@
 
 > 生产编排文件：`docker-compose.prod.yml`（postgres / redis / api / web / caddy）。
 > 所有 `docker compose` 命令都必须带 `--env-file .env.production`：它同时用于 compose 变量插值（`DOMAIN`、前端构建参数）和容器运行时环境。
+>
+> **路径约定**：`APP_DIR` 指**含 `docker-compose.prod.yml` 的目录**。本仓库位于 Desktop monorepo，
+> 典型值为 `/opt/x-workers-home/x-workers-home`；若部署独立仓库则为 `/opt/x-workers-home`。
+> 新开 shell 先执行 `export APP_DIR=/opt/x-workers-home/x-workers-home`，后文命令均以 `$APP_DIR` 为工作目录。
 
 ---
 
@@ -46,24 +50,31 @@ docker compose version
   ```
 - 等 DNS 生效再启动 Caddy，否则证书申请会失败并重试。
 
-### 0.3 部署代码
+### 0.3 部署代码与目录约定
 
 ```bash
 sudo mkdir -p /opt && sudo chown "$USER":"$USER" /opt
 cd /opt
 git clone <你的仓库地址> x-workers-home
-cd x-workers-home
+
+# Desktop monorepo 布局：仓库根是 Desktop，应用在 x-workers-home/ 子目录。
+APP_DIR=/opt/x-workers-home/x-workers-home
+cd "$APP_DIR"
 git checkout main   # 或以实际发布分支为准
+export APP_DIR
+test -f "$APP_DIR/docker-compose.prod.yml" && echo "APP_DIR ok: $APP_DIR"
 ```
 
-> 本仓库位于 Desktop 大仓的 `x-workers-home/` 子目录；部署根目录以含 `docker-compose.prod.yml` 的目录为准，后续命令都在该目录执行（下文记为 `/opt/x-workers-home`）。
+> - Desktop monorepo 布局：`APP_DIR=/opt/x-workers-home/x-workers-home`（本文示例值）。
+> - 独立 `x-workers-home` 仓库（仓库根即应用目录）：`APP_DIR=/opt/x-workers-home`。
+> - 后续所有命令、cron、升级步骤都以 `APP_DIR`（即含 `docker-compose.prod.yml` 的目录）为准；cron 不依赖交互 shell，已写完整路径。
 
 ---
 
 ## 1. 配置 `.env.production`
 
 ```bash
-cd /opt/x-workers-home
+cd "$APP_DIR"
 cp deploy/.env.production.example .env.production
 chmod 600 .env.production
 ```
@@ -106,7 +117,7 @@ stat -c '%a %n' .env.production        # 期望 600
 ## 2. 构建并启动
 
 ```bash
-cd /opt/x-workers-home
+cd "$APP_DIR"
 
 # 先起数据库（等 healthcheck 通过）
 docker compose --env-file .env.production -f docker-compose.prod.yml up -d postgres redis
@@ -235,22 +246,22 @@ curl -fsS -X POST "https://$DOMAIN/api/admin/terms" \
 手动执行：
 
 ```bash
-cd /opt/x-workers-home
+cd "$APP_DIR"
 bash scripts/backup.sh
 ```
 
-cron（每天 03:15）：
+cron（每天 03:15；cron 不继承交互 shell 的 `APP_DIR`，这里写 Desktop monorepo 的完整路径；独立仓库改为 `/opt/x-workers-home`）：
 
 ```bash
 crontab -e
 # 加入：
-15 3 * * * cd /opt/x-workers-home && bash scripts/backup.sh >> /var/log/xwh-backup.log 2>&1
+15 3 * * * cd /opt/x-workers-home/x-workers-home && bash scripts/backup.sh >> /var/log/xwh-backup.log 2>&1
 ```
 
 恢复（会覆盖当前库，务必先停业务）：
 
 ```bash
-cd /opt/x-workers-home
+cd "$APP_DIR"
 docker compose --env-file .env.production -f docker-compose.prod.yml stop api web
 docker compose --env-file .env.production -f docker-compose.prod.yml exec -T postgres \
   pg_restore -U xwh -d xwh --clean --if-exists --no-owner < backups/xwh-YYYYmmdd-HHMMSS.dump
@@ -265,7 +276,7 @@ docker compose --env-file .env.production -f docker-compose.prod.yml start api w
 ## 6. 升级流程
 
 ```bash
-cd /opt/x-workers-home
+cd "$APP_DIR"
 bash scripts/backup.sh                 # 1. 先备份
 git pull                               # 2. 拉新代码
 docker compose --env-file .env.production -f docker-compose.prod.yml build api web   # 3. 重建镜像
@@ -299,9 +310,9 @@ curl -fsS "https://$(grep '^DOMAIN=' .env.production | cut -d= -f2-)/api/health"
 curl -fL -o NotoSansSC.ttf \
   "https://cdn.jsdelivr.net/npm/@expo-google-fonts/noto-sans-sc@0.2.3/NotoSansSC_400Regular.ttf"
 
-# VPS 上放到构建上下文：
-mkdir -p /opt/x-workers-home/fonts-local
-cp NotoSansSC.ttf /opt/x-workers-home/fonts-local/NotoSansSC.ttf
+# VPS 上放到构建上下文（$APP_DIR 为含 Dockerfile 的部署根目录）：
+mkdir -p "$APP_DIR/fonts-local"
+cp NotoSansSC.ttf "$APP_DIR/fonts-local/NotoSansSC.ttf"
 ```
 
 然后把 `frontend/Dockerfile` 中下载字体的 `RUN set -eux; ...` 整段替换为：
@@ -336,8 +347,7 @@ COPY fonts-local/NotoSansSC.ttf /app/fonts/NotoSansSC.ttf
 - [ ] `curl https://<DOMAIN>/api/health` → `{"status":"ok"}`
 - [ ] 浏览器打开 `https://<DOMAIN>/` → 大厅正常渲染，`/_next` 静态资源 200
 - [ ] `https://<DOMAIN>/admin/login` → 管理员可登录
-- [ ] OG 图：`curl -fsS -o og.png -w '%{content_type} %{http_code}\n' https://<DOMAIN>/api/og/u/<已绑定用户UUID>` → `image/png 200`，打开图片确认**中文不是方框**
-- [ ] 订单 OG：`/api/og/order/<订单UUID>` → `image/png 200`
+- [ ] OG 图（必须**经 Caddy 域名**访问，验证 `/api/og/*` 分流）：`curl -fsS -o og.png -w '%{content_type} %{http_code}\n' https://<DOMAIN>/api/og/order/<订单UUID>` → `image/png 200`；同法验证 `https://<DOMAIN>/api/og/u/<已绑定用户UUID>`，打开图片确认**中文不是方框**（若经域名 404 而本地 200，检查 Caddyfile 中 `/api/og/*` 是否排在 `/api/*` 之前）
 
 ### 9.2 账号与绑定
 
@@ -379,3 +389,4 @@ COPY fonts-local/NotoSansSC.ttf /app/fonts/NotoSansSC.ttf
 | 充值迟迟不到账 | 确认数未到 / 游标未推进 / RPC 限流；看 api 日志与 `chain_cursors` |
 | 对账 `deficit` | 平台钱包 USDT 不足 90% 全平台 XM + 待付提现，或 RPC 读不到余额 |
 | OG 图中文方框 / 路由 500 | 字体缺失或用了可变字体：确认 `OG_FONT_PATH` 指向 `/app/fonts/NotoSansSC.ttf`，按 §7 使用静态字体重建；`parseFvarAxis` 报错说明用了 `NotoSansSC[wght].ttf` |
+| 经域名访问 OG 404、本地 standalone 200 | Caddy 把 `/api/og/*` 反向代理到了 NestJS：确认 `deploy/Caddyfile` 中 `/api/og/* → web:4000` 位于 `/api/* → api:4001` 之前，重建/重启 caddy |

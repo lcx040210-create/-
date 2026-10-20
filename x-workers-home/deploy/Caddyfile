@@ -3,12 +3,18 @@
 {$DOMAIN} {
 	encode gzip zstd
 
+	# OG 分享图由 Next.js route handler 提供（/api/og/order/:id、/api/og/u/:id），
+	# 必须先于通用 /api/* 分流到 web，否则会被反代到 NestJS 并 404。
+	handle /api/og/* {
+		reverse_proxy web:4000
+	}
+
 	# 后端 Nest 全局前缀为 /api，原样转发（不去前缀）。
 	handle /api/* {
 		reverse_proxy api:4001
 	}
 
-	# 其余（Next.js 页面、/_next 静态资源、OG 图）走 web。
+	# 其余（Next.js 页面、/_next 静态资源）走 web。
 	handle {
 		reverse_proxy web:4000
 	}
